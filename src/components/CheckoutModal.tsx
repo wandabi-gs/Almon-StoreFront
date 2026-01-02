@@ -16,12 +16,17 @@ interface CartItem {
 interface CheckoutModalProps {
   isOpen: boolean;
   onClose: () => void;
-  total: number;
+  total: number;  // This should be subtotal + delivery fee
   cartItems: CartItem[];
   productSaleType: Record<string, "roll" | "metre" | "board" | "unit">;
   storeId?: string;
+  deliveryFee?: number;  // Add this prop
+  deliveryArea?: string; // Add this prop
   onOrderSubmit?: (orderData: any) => Promise<{ sale_id?: string } | void>;
 }
+
+// API base URL - configure this properly
+const API_BASE_URL = import.meta.env.VITE_API_URL || 'https://ecommerce-backend-snc5.onrender.com';
 
 // Map variant names to API unit format
 const mapVariantToUnit = (variant: string, saleType: "roll" | "metre" | "board" | "unit"): string => {
@@ -40,36 +45,38 @@ const mapVariantToUnit = (variant: string, saleType: "roll" | "metre" | "board" 
   }
 };
 
-// Extract product ID from cart item ID
-const extractProductId = (cartItemId: string, variant: string): string => {
-  const variantLower = variant.toLowerCase();
-  const idLower = cartItemId.toLowerCase();
-
-  if (idLower.endsWith(`-${variantLower}`)) {
-    return cartItemId.slice(0, -(variantLower.length + 1));
-  }
-
-  const lastIndex = idLower.lastIndexOf(`-${variantLower}`);
-  if (lastIndex !== -1) {
-    return cartItemId.slice(0, lastIndex);
-  }
-
-  return cartItemId;
-};
-
 // Helper function to ensure sale_id starts with "SAL"
 const normalizeSaleId = (saleId: string | null | undefined): string | null => {
   if (!saleId) return null;
 
-  if (saleId.toUpperCase().startsWith('SAL')) {
-    return saleId.toUpperCase();
+  const saleStr = String(saleId).toUpperCase().trim();
+
+  if (saleStr.startsWith('SAL')) {
+    return saleStr;
   }
 
-  if (/^\d+$/.test(saleId)) {
-    return `SAL${saleId.padStart(6, '0')}`;
+  if (/^\d+$/.test(saleStr)) {
+    return `SAL${saleStr.padStart(6, '0')}`;
   }
 
-  return `SAL${saleId}`;
+  return `SAL${saleStr}`;
+};
+
+// Format phone number for M-Pesa
+const formatPhoneForMpesa = (phone: string): string => {
+  let cleaned = phone.replace(/\D/g, '');
+
+  if (cleaned.startsWith('0')) {
+    cleaned = `254${cleaned.substring(1)}`;
+  } else if (cleaned.startsWith('+254')) {
+    cleaned = cleaned.substring(1);
+  } else if (cleaned.startsWith('254')) {
+    // Already correct format
+  } else {
+    // Assume it's already in correct format
+  }
+
+  return cleaned;
 };
 
 export const CheckoutModal: React.FC<CheckoutModalProps> = ({
@@ -78,7 +85,9 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
   total,
   cartItems,
   productSaleType,
-  storeId = "almon-products",
+  storeId = "STR251100001", // Changed default to match storefront
+  deliveryFee = 0,
+  deliveryArea = "",
   onOrderSubmit
 }) => {
   const [customerName, setCustomerName] = useState("");
@@ -89,11 +98,15 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
   const [deliveryAddress, setDeliveryAddress] = useState("");
   const [paymentMethod] = useState("mpesa");
   const [loading, setLoading] = useState(false);
-  const [status, setStatus] = useState("");
+  const [status, setStatus] = useState<{ type: 'success' | 'error' | 'info' | 'warning', message: string } | null>(null);
+
+  // Calculate subtotal from cart items
+  const subtotal = cartItems.reduce((sum, item) => sum + (item.price * item.quantity), 0);
 
   const formatOrderData = () => {
     const products = cartItems.map((item) => {
-      let productId = item.productId || extractProductId(item.id, item.variant);
+      // Use productId if available, otherwise use the id
+      let productId = item.productId || item.id;
       if (productId && typeof productId === 'string') {
         productId = productId.toUpperCase();
       }
@@ -108,36 +121,58 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
     });
 
     return {
-      store_id: storeId || "almon-products",
+      store_id: storeId,
       products: products,
       delivery: {
         recipient_name: recipientName,
         recipient_phone: recipientPhone,
         recipient_email: recipientEmail || "",
         delivery_address: deliveryAddress,
+        delivery_area: deliveryArea,
+        delivery_fee: deliveryFee
       },
       payment_method: paymentMethod,
       phone_number: phoneNumber,
       customer_name: customerName,
+      subtotal_amount: subtotal,
+      delivery_fee: deliveryFee,
       total_amount: total,
     };
   };
 
   const handleSubmit = async () => {
+    // Reset status
+    setStatus(null);
+
+    // Validation
     if (!customerName || !phoneNumber || !recipientName || !recipientPhone || !deliveryAddress) {
-      setStatus("Please fill in all required fields.");
+      setStatus({
+        type: 'error',
+        message: "Please fill in all required fields."
+      });
       return;
     }
 
     if (cartItems.length === 0) {
-      setStatus("Your cart is empty.");
+      setStatus({
+        type: 'error',
+        message: "Your cart is empty."
+      });
+      return;
+    }
+
+    // Phone validation
+    const phoneRegex = /^(?:254|\+254|0)?[7]\d{8}$/;
+    if (!phoneRegex.test(phoneNumber)) {
+      setStatus({
+        type: 'error',
+        message: "Please enter a valid Kenyan phone number (e.g., 07XXXXXXXX or +2547XXXXXXXX)."
+      });
       return;
     }
 
     try {
       setLoading(true);
-      setStatus("");
-
       const orderData = formatOrderData();
       let saleId: string | null = null;
 
@@ -147,98 +182,87 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
         if (result && typeof result === 'object' && 'sale_id' in result) {
           saleId = normalizeSaleId(result.sale_id as string);
         }
-        setStatus("Order submitted successfully!");
       } else {
-        console.log("Submitting order:", JSON.stringify(orderData, null, 2));
         try {
-          const orderRes = await axios.post("/customer/orders", orderData);
+          const orderRes = await axios.post(`${API_BASE_URL}/customer/orders`, orderData);
           const rawSaleId = orderRes.data?.sale_id || orderRes.data?.id || orderRes.data?.order_id || null;
           saleId = normalizeSaleId(rawSaleId);
-          setStatus("Order submitted successfully!");
-        } catch (orderError: any) {
-          console.error("Order submission error details:", orderError.response?.data);
-          if (orderError.response?.data?.message && Array.isArray(orderError.response.data.message)) {
-            const errorMessages = orderError.response.data.message.join(", ");
-            throw new Error(errorMessages);
-          }
-          throw orderError;
-        }
-      }
 
-      // Step 2: Process payment with sale_id
-      if (saleId) {
-        try {
-          const paymentRes = await axios.post(`localhost:8000/api/customer/order/${saleId}/pay`, {
-            payment_method: paymentMethod,
-            amount: total,
+          setStatus({
+            type: 'success',
+            message: "Order submitted successfully! Processing payment..."
           });
+        } catch (orderError: any) {
+          console.error("Order submission error:", orderError);
 
-          const paymentMessage = paymentRes.data?.message || "Payment processed successfully";
-          setStatus((prev) => prev + " " + paymentMessage);
-
-          // If payment method is M-Pesa, also initiate STK push
-          if (paymentMethod === "mpesa") {
-            try {
-              const formattedPhone = phoneNumber.startsWith('0')
-                ? `254${phoneNumber.substring(1)}`
-                : phoneNumber.startsWith('+254')
-                  ? phoneNumber.substring(1)
-                  : phoneNumber;
-
-              const stkRes = await axios.post("/api/stk", {
-                phone: formattedPhone,
-                amount: total,
-                sale_id: saleId,
-                account_reference: saleId
-              });
-
-              const stkMessage = (stkRes.data as { message?: string } | undefined)?.message;
-              setStatus((prev) => prev + " " + (stkMessage ?? "Payment initiated. Check your phone."));
-            } catch (error: any) {
-              console.error("STK push error:", error.response?.data || error.message);
-              setStatus((prev) => prev + " STK push failed. Please contact support.");
+          let errorMessage = "Order submission failed. Please try again.";
+          if (orderError.response?.data?.message) {
+            if (Array.isArray(orderError.response.data.message)) {
+              errorMessage = orderError.response.data.message.join(", ");
+            } else {
+              errorMessage = orderError.response.data.message;
             }
           }
+
+          throw new Error(errorMessage);
+        }
+      }
+
+      // Step 2: Process payment if we have a sale ID
+      if (saleId) {
+        try {
+          const formattedPhone = formatPhoneForMpesa(phoneNumber);
+
+          // Initiate STK push
+          const stkRes = await axios.post(`${API_BASE_URL}/api/stk`, {
+            phone: formattedPhone,
+            amount: total,
+            sale_id: saleId,
+            account_reference: saleId
+          });
+
+          if (stkRes.data.success || stkRes.data.ResponseCode === '0') {
+            setStatus({
+              type: 'success',
+              message: `Payment initiated successfully! Check your phone ${formattedPhone} to complete payment. Order ID: ${saleId}`
+            });
+
+            // Close modal after delay
+            setTimeout(() => {
+              onClose();
+              // Reset form
+              setCustomerName("");
+              setPhoneNumber("");
+              setRecipientName("");
+              setRecipientPhone("");
+              setRecipientEmail("");
+              setDeliveryAddress("");
+              setStatus(null);
+            }, 5000);
+          } else {
+            throw new Error(stkRes.data.errorMessage || "STK push failed");
+          }
         } catch (error: any) {
-          console.error("Payment error:", error.response?.data || error.message);
-          setStatus((prev) => prev + " Payment processing failed. Please contact support.");
+          console.error("Payment error:", error);
+
+          setStatus({
+            type: 'error',
+            message: `Payment initiation failed. Please contact support with order ID: ${saleId}. Error: ${error.message}`
+          });
         }
       } else {
-        console.warn("No sale ID received from order submission");
-        setStatus((prev) => prev + " Warning: Sale ID not received. Please contact support.");
-      }
-
-      // If everything was successful, show success message and close modal after delay
-      if (!status.includes("failed") && !status.includes("Warning")) {
-        setTimeout(() => {
-          onClose();
-          // Reset form
-          setCustomerName("");
-          setPhoneNumber("");
-          setRecipientName("");
-          setRecipientPhone("");
-          setRecipientEmail("");
-          setDeliveryAddress("");
-          setStatus("");
-        }, 3000);
+        setStatus({
+          type: 'warning',
+          message: "Order created but no sale ID received. Please contact support."
+        });
       }
     } catch (error: any) {
-      console.error("Order submission error:", error.response?.data || error.message);
+      console.error("Checkout error:", error);
 
-      let errorMessage = "Order submission failed. Please try again.";
-      if (error.response?.data?.message) {
-        if (Array.isArray(error.response.data.message)) {
-          errorMessage = error.response.data.message.join(", ");
-        } else {
-          errorMessage = error.response.data.message;
-        }
-      } else if (error.response?.data?.error) {
-        errorMessage = error.response.data.error;
-      } else if (error.message) {
-        errorMessage = error.message;
-      }
-
-      setStatus(`Error: ${errorMessage}`);
+      setStatus({
+        type: 'error',
+        message: error.message || "An unexpected error occurred. Please try again."
+      });
     } finally {
       setLoading(false);
     }
@@ -252,8 +276,18 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
         </ModalHeader>
         <ModalBody className="space-y-4">
           {/* Order Summary */}
-          <div className="bg-gray-50 dark:bg-gray-700/30 p-4 rounded-lg">
-            <div className="flex justify-between font-semibold text-gray-900 dark:text-white">
+          <div className="bg-gray-50 dark:bg-gray-700/30 p-4 rounded-lg space-y-2">
+            <div className="flex justify-between">
+              <span className="text-gray-600 dark:text-gray-300">Subtotal:</span>
+              <span className="font-medium">KES {subtotal.toLocaleString()}</span>
+            </div>
+            {deliveryFee > 0 && (
+              <div className="flex justify-between">
+                <span className="text-gray-600 dark:text-gray-300">Delivery Fee:</span>
+                <span className="font-medium">KES {deliveryFee.toLocaleString()}</span>
+              </div>
+            )}
+            <div className="flex justify-between font-semibold text-gray-900 dark:text-white border-t pt-2">
               <span>Total:</span>
               <span>KES {total.toLocaleString()}</span>
             </div>
@@ -272,7 +306,7 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
             <Input
               type="tel"
               label="Your Phone Number"
-              placeholder="07XXXXXXXX"
+              placeholder="07XXXXXXXX or +2547XXXXXXXX"
               value={phoneNumber}
               onChange={(e) => setPhoneNumber(e.target.value)}
               isRequired
@@ -293,14 +327,14 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
             <Input
               type="tel"
               label="Recipient Phone"
-              placeholder="07XXXXXXXX"
+              placeholder="07XXXXXXXX or +2547XXXXXXXX"
               value={recipientPhone}
               onChange={(e) => setRecipientPhone(e.target.value)}
               isRequired
             />
             <Input
               type="email"
-              label="Recipient Email"
+              label="Recipient Email (Optional)"
               placeholder="recipient@example.com"
               value={recipientEmail}
               onChange={(e) => setRecipientEmail(e.target.value)}
@@ -323,18 +357,15 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
             <p className="text-xs text-blue-700 dark:text-blue-300 mt-1">
               You will receive an M-Pesa STK push notification to complete payment
             </p>
-            <p className="text-xs text-blue-600 dark:text-blue-400 mt-1">
-              Order Reference: {`SAL${Date.now().toString().slice(-6)}`}
-            </p>
           </div>
 
+          {/* Status Message */}
           {status && (
-            <p
-              className={`text-sm ${status.includes("failed") || status.includes("Error") || status.includes("Please") ? "text-red-500" : "text-green-600"
-                }`}
-            >
-              {status}
-            </p>
+            <div className={`p-3 rounded-lg ${status.type === 'success' ? 'bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-300' :
+              status.type === 'error' ? 'bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-300' :
+                'bg-yellow-50 dark:bg-yellow-900/20 text-yellow-700 dark:text-yellow-300'}`}>
+              <p className="text-sm">{status.message}</p>
+            </div>
           )}
         </ModalBody>
         <ModalFooter>
@@ -347,7 +378,7 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
             isLoading={loading}
             disabled={!customerName || !phoneNumber || !recipientName || !recipientPhone || !deliveryAddress || cartItems.length === 0}
           >
-            {paymentMethod === "mpesa" ? "Place Order & Pay via STK" : "Place Order"}
+            Place Order & Pay via M-Pesa
           </Button>
         </ModalFooter>
       </ModalContent>

@@ -6,6 +6,9 @@ import tailwindcss from "@tailwindcss/vite";
 // https://vitejs.dev/config/
 export default defineConfig({
   plugins: [react(), tsconfigPaths(), tailwindcss()],
+  define: {
+    'process.env': {},
+  },
   server: {
     host: true, // exposes to your local network
     port: 5173, // or any port you prefer

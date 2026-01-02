@@ -362,7 +362,7 @@ export default function StorefrontPage() {
   const [activeTab, setActiveTab] = useState<any>("roll");
   const [trackModalOpen, setTrackModalOpen] = useState(false);
   const [deliveryModalOpen, setDeliveryModalOpen] = useState(false);
-  const [deliveryArea, setDeliveryArea] = useState<string>("");
+  const [deliveryArea] = useState<string>("");
   const [videoLoaded, setVideoLoaded] = useState(false);
   const [videoError, setVideoError] = useState(false);
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -1499,14 +1499,12 @@ export default function StorefrontPage() {
       <CheckoutModal
         isOpen={checkoutOpen}
         onClose={() => setCheckoutOpen(false)}
-        subtotal={subtotal}
-        deliveryFee={deliveryFee}
-        total={total}
-        deliveryArea={deliveryArea}
-        onDeliveryAreaChange={setDeliveryArea}
+        total={total + deliveryFee}
         cartItems={cart}
         productSaleType={useApiProducts ? apiProductSaleType : productSaleType}
         storeId="STR251100001"
+        deliveryFee={deliveryFee}
+        deliveryArea={deliveryArea}
       />
 
       {trackModalOpen && <TrackOrderPopup isOpen={trackModalOpen} onClose={() => setTrackModalOpen(false)} />}
