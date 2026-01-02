@@ -12,7 +12,7 @@ export default defineConfig({
     proxy: {
       // Proxy API calls to avoid CORS and handle API routes
       '/api': {
-        target: 'http://localhost:8000',
+        target: 'https://ecommerce-backend-snc5.onrender.com',
         changeOrigin: true,
         configure: (proxy, _options) => {
           proxy.on('error', (err, _req, _res) => {
@@ -25,7 +25,7 @@ export default defineConfig({
       },
       // Proxy customer endpoints
       '/customer': {
-        target: 'http://localhost:8000',
+        target: 'https://ecommerce-backend-snc5.onrender.com',
         changeOrigin: true,
         configure: (proxy, _options) => {
           proxy.on('error', (err, _req, _res) => {
