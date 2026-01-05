@@ -12,13 +12,9 @@ import {
   Button,
   Checkbox,
   Spinner,
-  Divider,
   Chip,
   Card,
   CardBody,
-  Accordion,
-  AccordionItem,
-  Image,
 } from "@heroui/react";
 
 const API_BASE =
@@ -60,12 +56,6 @@ export function ConfirmDeliveryModal({ isOpen, onClose }: ConfirmDeliveryModalPr
   const [showDeliveryNote, setShowDeliveryNote] = useState(false);
   const [error, setError] = useState("");
   const [customerInfo, setCustomerInfo] = useState<any>(null);
-  const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>({
-    orderInfo: true,
-    customerInfo: true,
-    deliveryInfo: true,
-    items: true,
-  });
 
   // Reset state when modal opens/closes
   useEffect(() => {
@@ -87,19 +77,6 @@ export function ConfirmDeliveryModal({ isOpen, onClose }: ConfirmDeliveryModalPr
     setOtpLoading(false);
     setOrderInfo(null);
     setCustomerInfo(null);
-    setExpandedSections({
-      orderInfo: true,
-      customerInfo: true,
-      deliveryInfo: true,
-      items: true,
-    });
-  };
-
-  const toggleSection = (section: string) => {
-    setExpandedSections(prev => ({
-      ...prev,
-      [section]: !prev[section]
-    }));
   };
 
   const fetchOrderDetails = async (orderNumber: string) => {
