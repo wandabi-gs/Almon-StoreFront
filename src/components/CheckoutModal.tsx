@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState } from "react";
 import {
   Modal,
   ModalContent,
@@ -10,9 +10,31 @@ import {
   Input,
   Button,
   Textarea,
+  Divider,
+  Badge,
+  Card,
+  CardBody,
 } from "@heroui/react";
 import axios from "axios";
+import { motion, AnimatePresence } from "framer-motion";
 import { PaymentConfirmationModal } from "./PaymentConfirmationModal";
+import {
+  CreditCardIcon,
+  BuildingOfficeIcon,
+  UserCircleIcon,
+  PhoneIcon,
+  EnvelopeIcon,
+  MapPinIcon,
+  TruckIcon,
+  ShieldCheckIcon,
+  LockClosedIcon,
+  ClockIcon,
+  DocumentTextIcon,
+  CheckCircleIcon,
+  ArrowPathIcon,
+  BanknotesIcon,
+  ChartBarIcon,
+} from "@heroicons/react/24/outline";
 
 interface CartItem {
   id: string;
@@ -21,6 +43,8 @@ interface CartItem {
   variant: string;
   price: number;
   quantity: number;
+  image?: string;
+  sku?: string;
 }
 
 interface CheckoutModalProps {
@@ -90,7 +114,6 @@ const formatPhoneForMpesa = (phone: string): string => {
 export const CheckoutModal: React.FC<CheckoutModalProps> = ({
   isOpen,
   onClose,
-  total,
   cartItems,
   productSaleType,
   storeId = "STR251100001",
@@ -107,6 +130,9 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
   const [recipientPhone, setRecipientPhone] = useState("");
   const [recipientEmail, setRecipientEmail] = useState("");
   const [deliveryAddress, setDeliveryAddress] = useState("");
+  const [companyName, setCompanyName] = useState("");
+  const [poNumber, setPoNumber] = useState("");
+  const [notes, setNotes] = useState("");
 
   // Loading and status states
   const [loading, setLoading] = useState(false);
@@ -118,25 +144,11 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
 
   // Modal states
   const [showPaymentModal, setShowPaymentModal] = useState(false);
-
-  useEffect(() => {
-    console.log("Debug - showPaymentModal state:", showPaymentModal);
-    console.log("Debug - saleId:", saleId);
-    console.log("Debug - checkoutRequestId:", checkoutRequestId);
-  }, [showPaymentModal, saleId, checkoutRequestId]);
-
-  // Add this to track when the modal should open
-  useEffect(() => {
-    if (showPaymentModal) {
-      console.log("🔄 PaymentConfirmationModal should now be visible");
-      console.log("📞 Phone:", phoneNumber);
-      console.log("💰 Amount:", total);
-      console.log("🆔 Sale ID:", saleId);
-      console.log("🎫 Checkout Request ID:", checkoutRequestId);
-    }
-  }, [showPaymentModal]);
+  const [activeStep, setActiveStep] = useState<'details' | 'review' | 'payment'>('details');
 
   const subtotal = cartItems.reduce((sum, item) => sum + (item.price * item.quantity), 0);
+  const vat = subtotal * 0.16;
+  const grandTotal = subtotal + vat + deliveryFee;
 
   // Reset form function
   const resetForm = () => {
@@ -146,9 +158,13 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
     setRecipientPhone("");
     setRecipientEmail("");
     setDeliveryAddress("");
+    setCompanyName("");
+    setPoNumber("");
+    setNotes("");
     setStatus(null);
     setSaleId(null);
     setCheckoutRequestId(null);
+    setActiveStep('details');
   };
 
   // Handle modal close with form reset
@@ -184,16 +200,21 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
         delivery_area: deliveryArea,
         delivery_fee: deliveryFee
       },
+      enterprise_info: {
+        company_name: companyName || "",
+        po_number: poNumber || "",
+        special_notes: notes || ""
+      },
       payment_method: "mpesa",
       phone_number: phoneNumber,
       customer_name: customerName,
       subtotal_amount: subtotal,
+      vat_amount: vat,
       delivery_fee: deliveryFee,
-      total_amount: total,
+      total_amount: grandTotal,
     };
   };
 
-  // Function to correctly initiate the full M-Pesa payment flow
   const initiateMpesaPayment = async (orderId: string, phone: string, amount: number) => {
     const formattedPhone = formatPhoneForMpesa(phone);
     let checkoutRequestId: string | null = null;
@@ -209,10 +230,7 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
           phone_number: formattedPhone,
         }
       );
-      console.log("Order marked for M-Pesa payment (optional step succeeded).");
-    } catch {
-      // Swallow ALL errors - do nothing, don't even log
-    }
+    } catch { }
 
     // STEP 2: Try to send the STK push - EXTRACT DATA EVEN ON FAILURE
     try {
@@ -225,14 +243,9 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
         }
       );
       stkPushResponseData = response.data;
-      console.log("STK Push succeeded:", stkPushResponseData);
     } catch (error) {
-      console.warn("STK Push endpoint returned an error, but payment may still be initiated.");
-
-      // CRITICAL: Try to extract data from the error response
       if (axios.isAxiosError(error) && error.response?.data) {
         stkPushResponseData = error.response.data;
-        console.log("Extracted data from error response:", stkPushResponseData);
       }
     }
 
@@ -247,22 +260,15 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
         stkPushResponseData?.merchantRequestID;
     }
 
-    console.log("Final extracted CheckoutRequestID:", checkoutRequestId);
-
-    // ALWAYS return an object with the data we have, even if it's minimal
     return {
-      // Include any response data we got
       ...(stkPushResponseData || {}),
-      // Ensure we have a checkoutRequestId field (even if null)
       CheckoutRequestID: checkoutRequestId,
       checkoutRequestID: checkoutRequestId,
-      // Always indicate success so the modal opens
       success: true,
       message: "Payment initiated. Please check your phone."
     };
   };
 
-  // Main submit handler - COMPLETE VERSION
   const handleSubmit = async () => {
     setStatus(null);
 
@@ -306,7 +312,6 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
       } else {
         const orderRes = await axios.post(`${API_BASE_URL}/customer/orders`, orderData);
         rawSaleId = orderRes.data?.sale_id || orderRes.data?.id || orderRes.data?.order_id || null;
-        console.log("Order creation response:", orderRes.data);
       }
 
       const normalizedSaleId = normalizeSaleId(rawSaleId);
@@ -317,41 +322,28 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
 
       setSaleId(normalizedSaleId);
 
-      // Step 2: NEW PAYMENT INITIATION LOGIC - REPLACE THE OLD BLOCK
-      console.log(`Initiating payment for order: ${normalizedSaleId}`);
-      console.log(`Phone: ${phoneNumber}, Formatted: ${formatPhoneForMpesa(phoneNumber)}`);
-
+      // Step 2: Initiate payment
       try {
-        const paymentResponse = await initiateMpesaPayment(normalizedSaleId, phoneNumber, total);
+        const paymentResponse = await initiateMpesaPayment(normalizedSaleId, phoneNumber, grandTotal);
+        const extractedCheckoutId = paymentResponse?.CheckoutRequestID || paymentResponse?.checkoutRequestID;
 
-        console.log("Final payment response for modal:", paymentResponse);
-
-        // ALWAYS show the modal, regardless of API response
         setStatus({
           type: 'info',
           message: `Order ${normalizedSaleId} created. Please check your phone for the M-Pesa prompt.`
         });
 
-        // Extract checkoutRequestId if available
-        const extractedCheckoutId = paymentResponse?.CheckoutRequestID ||
-          paymentResponse?.checkoutRequestID;
-
         setCheckoutRequestId(extractedCheckoutId);
-        setShowPaymentModal(true); // FORCE the modal to open
+        setShowPaymentModal(true);
+        setActiveStep('payment');
 
       } catch (error) {
-        // This catch should rarely trigger now, but keep it as safety
-        console.error("Unexpected error in payment flow:", error);
-        // Even here, consider showing the modal with a warning
         setStatus({
           type: 'warning',
           message: `Order ${normalizedSaleId} created. Please check your phone - payment system is experiencing issues but may still work.`
         });
-        setShowPaymentModal(true); // STILL open the modal
+        setShowPaymentModal(true);
       }
     } catch (error: any) {
-      console.error("Checkout error:", error);
-
       let errorMessage = "An error occurred. Please try again.";
       if (error.response?.data?.message) {
         if (Array.isArray(error.response.data.message)) {
@@ -372,32 +364,22 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
     }
   };
 
-  // Handle payment success (called from PaymentConfirmationModal)
   const handlePaymentSuccess = () => {
-    // Close checkout modal
     handleModalClose();
-
-    // Call success callbacks
     if (onCheckoutSuccess) onCheckoutSuccess();
     if (onClearCart) onClearCart();
   };
 
-  // Handle payment failure (called from PaymentConfirmationModal)
   const handlePaymentFailure = () => {
     setShowPaymentModal(false);
-
-    // Keep checkout modal open for retry
     setStatus({
       type: 'error',
       message: "Payment was not completed. Please try again."
     });
   };
 
-  // Handle payment cancellation (called from PaymentConfirmationModal)
   const handlePaymentCancel = () => {
     setShowPaymentModal(false);
-
-    // Keep checkout modal open
     setStatus({
       type: 'warning',
       message: "Payment was cancelled. You can try again or modify your order."
@@ -413,154 +395,481 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
       cartItems.length > 0;
   };
 
+  const renderStepIndicator = () => {
+    const steps = [
+      { key: 'details', label: 'Details', icon: UserCircleIcon },
+      { key: 'review', label: 'Review', icon: DocumentTextIcon },
+      { key: 'payment', label: 'Payment', icon: CreditCardIcon },
+    ];
+
+    return (
+      <div className="flex items-center justify-center mb-8">
+        <div className="relative flex items-center justify-between w-full max-w-lg">
+          {steps.map((step) => {
+            const Icon = step.icon;
+            const isActive = activeStep === step.key;
+            const isCompleted =
+              (step.key === 'details' && activeStep !== 'details') ||
+              (step.key === 'review' && activeStep === 'payment');
+
+            return (
+              <div key={step.key} className="flex flex-col items-center relative z-10">
+                <div className={`w-12 h-12 rounded-full flex items-center justify-center border-2 transition-all duration-300 ${isActive
+                  ? 'bg-gradient-to-r from-blue-600 to-cyan-600 border-blue-600 text-white'
+                  : isCompleted
+                    ? 'bg-emerald-500 border-emerald-500 text-white'
+                    : 'bg-gray-100 dark:bg-gray-800 border-gray-300 dark:border-gray-600 text-gray-500 dark:text-gray-400'
+                  }`}>
+                  {isCompleted ? (
+                    <CheckCircleIcon className="w-6 h-6" />
+                  ) : (
+                    <Icon className="w-6 h-6" />
+                  )}
+                </div>
+                <span className={`text-sm font-medium mt-2 ${isActive || isCompleted ? 'text-gray-900 dark:text-white' : 'text-gray-500 dark:text-gray-400'}`}>
+                  {step.label}
+                </span>
+              </div>
+            );
+          })}
+          {/* Progress line */}
+          <div className="absolute top-6 left-12 right-12 h-0.5 bg-gray-200 dark:bg-gray-700 -z-10">
+            <motion.div
+              className="h-full bg-gradient-to-r from-blue-600 to-cyan-600"
+              initial={{ width: '0%' }}
+              animate={{
+                width: activeStep === 'details' ? '0%' :
+                  activeStep === 'review' ? '50%' : '100%'
+              }}
+              transition={{ duration: 0.3 }}
+            />
+          </div>
+        </div>
+      </div>
+    );
+  };
+
   return (
     <>
       {/* Main Checkout Modal */}
-      <Modal isOpen={isOpen} onClose={handleModalClose} size="2xl" scrollBehavior="inside">
-        <ModalContent className="bg-gradient-to-br from-white to-blue-50 dark:from-gray-900 dark:to-gray-800">
-          <ModalHeader className="text-xl font-bold text-gray-900 dark:text-white">
-            Complete Your Purchase
-          </ModalHeader>
-          <ModalBody className="space-y-4">
-            {/* Order Summary */}
-            <div className="bg-gray-50 dark:bg-gray-700/30 p-4 rounded-lg space-y-2">
-              <div className="flex justify-between">
-                <span className="text-gray-600 dark:text-gray-300">Subtotal:</span>
-                <span className="font-medium">KES {subtotal.toLocaleString()}</span>
-              </div>
-              {deliveryFee > 0 && (
-                <div className="flex justify-between">
-                  <span className="text-gray-600 dark:text-gray-300">Delivery Fee:</span>
-                  <span className="font-medium">KES {deliveryFee.toLocaleString()}</span>
-                </div>
-              )}
-              <div className="flex justify-between font-semibold text-gray-900 dark:text-white border-t pt-2">
-                <span>Total:</span>
-                <span className="text-lg">KES {total.toLocaleString()}</span>
-              </div>
-            </div>
-
-            {/* Customer Information */}
-            <div className="space-y-3">
-              <h3 className="font-semibold text-gray-900 dark:text-white">Customer Information</h3>
-              <Input
-                label="Your Name"
-                placeholder="Enter your full name"
-                value={customerName}
-                onChange={(e) => setCustomerName(e.target.value)}
-                isRequired
-                disabled={loading}
-              />
-              <Input
-                type="tel"
-                label="Your Phone Number"
-                placeholder="07XXXXXXXX or +2547XXXXXXXX"
-                value={phoneNumber}
-                onChange={(e) => setPhoneNumber(e.target.value)}
-                isRequired
-                description="For M-Pesa payment and delivery updates"
-                disabled={loading}
-              />
-            </div>
-
-            {/* Delivery Information */}
-            <div className="space-y-3">
-              <h3 className="font-semibold text-gray-900 dark:text-white">Delivery Information</h3>
-              <Input
-                label="Recipient Name"
-                placeholder="Enter recipient's full name"
-                value={recipientName}
-                onChange={(e) => setRecipientName(e.target.value)}
-                isRequired
-                disabled={loading}
-              />
-              <Input
-                type="tel"
-                label="Recipient Phone"
-                placeholder="07XXXXXXXX or +2547XXXXXXXX"
-                value={recipientPhone}
-                onChange={(e) => setRecipientPhone(e.target.value)}
-                isRequired
-                disabled={loading}
-              />
-              <Input
-                type="email"
-                label="Recipient Email (Optional)"
-                placeholder="recipient@example.com"
-                value={recipientEmail}
-                onChange={(e) => setRecipientEmail(e.target.value)}
-                disabled={loading}
-              />
-              <Textarea
-                label="Delivery Address"
-                placeholder="Enter complete delivery address (Building, Street, Landmark)"
-                value={deliveryAddress}
-                onChange={(e) => setDeliveryAddress(e.target.value)}
-                isRequired
-                minRows={2}
-                disabled={loading}
-              />
-            </div>
-
-            {/* Payment Method */}
-            <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-4">
-              <div className="flex items-center">
-                <div className="bg-green-100 dark:bg-green-900 p-2 rounded-lg mr-3">
-                  <span className="text-green-800 dark:text-green-200 font-bold">M-Pesa</span>
+      <Modal
+        isOpen={isOpen}
+        onClose={handleModalClose}
+        size="5xl"
+        scrollBehavior="outside"
+        classNames={{
+          base: "z-[9999]",
+          backdrop: "bg-black/60 backdrop-blur-xl",
+        }}
+      >
+        <ModalContent className="bg-gradient-to-b from-white to-gray-50 dark:from-gray-900 dark:to-gray-800 border border-gray-200 dark:border-gray-700 shadow-3xl">
+          <ModalHeader className="pt-8 pb-6">
+            <div className="flex items-center justify-between w-full">
+              <div className="flex items-center gap-4">
+                <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-blue-600 to-cyan-600 p-0.5">
+                  <div className="w-full h-full rounded-xl bg-white dark:bg-gray-900 flex items-center justify-center">
+                    <CreditCardIcon className="w-8 h-8 text-blue-600 dark:text-blue-400" />
+                  </div>
                 </div>
                 <div>
-                  <p className="text-sm font-semibold text-blue-900 dark:text-blue-200">
-                    Payment Method: M-Pesa STK Push
-                  </p>
-                  <p className="text-xs text-blue-700 dark:text-blue-300 mt-1">
-                    After submitting, you'll receive a prompt on your phone to enter your M-Pesa PIN
+                  <h2 className="text-3xl font-bold bg-gradient-to-r from-blue-600 to-cyan-600 bg-clip-text text-transparent">
+                    Enterprise Procurement
+                  </h2>
+                  <p className="text-sm text-gray-600 dark:text-gray-400">
+                    Complete your corporate order with secure payment
                   </p>
                 </div>
+              </div>
+
+              <Badge
+                color="primary"
+                variant="flat"
+                className="bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400"
+              >
+                {cartItems.length} Items
+              </Badge>
+            </div>
+          </ModalHeader>
+
+          <ModalBody className="pb-0">
+            {renderStepIndicator()}
+
+            <div className="grid lg:grid-cols-3 gap-8">
+              {/* Left Column - Order Details */}
+              <div className="lg:col-span-2 space-y-6">
+                <AnimatePresence mode="wait">
+                  {activeStep === 'details' && (
+                    <motion.div
+                      key="details"
+                      initial={{ opacity: 0, x: -20 }}
+                      animate={{ opacity: 1, x: 0 }}
+                      exit={{ opacity: 0, x: 20 }}
+                      className="space-y-8"
+                    >
+                      {/* Customer Information */}
+                      <div className="bg-white dark:bg-gray-800 rounded-2xl p-6 border border-gray-200 dark:border-gray-700 shadow-lg">
+                        <div className="flex items-center gap-3 mb-6">
+                          <div className="p-3 rounded-xl bg-blue-50 dark:bg-blue-900/30">
+                            <UserCircleIcon className="w-6 h-6 text-blue-600 dark:text-blue-400" />
+                          </div>
+                          <h3 className="text-xl font-bold text-gray-900 dark:text-white">Primary Contact</h3>
+                        </div>
+
+                        <div className="grid md:grid-cols-2 gap-4">
+                          <Input
+                            label="Your Name"
+                            placeholder="John Doe"
+                            value={customerName}
+                            onChange={(e) => setCustomerName(e.target.value)}
+                            isRequired
+                            disabled={loading}
+                            classNames={{
+                              input: "text-base py-6",
+                              label: "text-gray-700 dark:text-gray-300"
+                            }}
+                          />
+                          <Input
+                            type="tel"
+                            label="Phone Number"
+                            placeholder="07XXXXXXXX or +2547XXXXXXXX"
+                            value={phoneNumber}
+                            onChange={(e) => setPhoneNumber(e.target.value)}
+                            isRequired
+                            disabled={loading}
+                            description="For M-Pesa payment confirmation"
+                            startContent={<PhoneIcon className="w-5 h-5 text-gray-400" />}
+                          />
+                        </div>
+
+                        <div className="grid md:grid-cols-2 gap-4 mt-4">
+                          <Input
+                            label="Company Name (Optional)"
+                            placeholder="Acme Corporation"
+                            value={companyName}
+                            onChange={(e) => setCompanyName(e.target.value)}
+                            disabled={loading}
+                            startContent={<BuildingOfficeIcon className="w-5 h-5 text-gray-400" />}
+                          />
+                          <Input
+                            label="PO Number (Optional)"
+                            placeholder="PO-2024-001"
+                            value={poNumber}
+                            onChange={(e) => setPoNumber(e.target.value)}
+                            disabled={loading}
+                          />
+                        </div>
+                      </div>
+
+                      {/* Delivery Information */}
+                      <div className="bg-white dark:bg-gray-800 rounded-2xl p-6 border border-gray-200 dark:border-gray-700 shadow-lg">
+                        <div className="flex items-center gap-3 mb-6">
+                          <div className="p-3 rounded-xl bg-emerald-50 dark:bg-emerald-900/30">
+                            <TruckIcon className="w-6 h-6 text-emerald-600 dark:text-emerald-400" />
+                          </div>
+                          <h3 className="text-xl font-bold text-gray-900 dark:text-white">Delivery Details</h3>
+                        </div>
+
+                        <div className="grid md:grid-cols-2 gap-4">
+                          <Input
+                            label="Recipient Name"
+                            placeholder="Jane Smith"
+                            value={recipientName}
+                            onChange={(e) => setRecipientName(e.target.value)}
+                            isRequired
+                            disabled={loading}
+                          />
+                          <Input
+                            type="tel"
+                            label="Recipient Phone"
+                            placeholder="07XXXXXXXX or +2547XXXXXXXX"
+                            value={recipientPhone}
+                            onChange={(e) => setRecipientPhone(e.target.value)}
+                            isRequired
+                            disabled={loading}
+                            startContent={<PhoneIcon className="w-5 h-5 text-gray-400" />}
+                          />
+                        </div>
+
+                        <div className="mt-4">
+                          <Input
+                            type="email"
+                            label="Recipient Email"
+                            placeholder="recipient@company.com"
+                            value={recipientEmail}
+                            onChange={(e) => setRecipientEmail(e.target.value)}
+                            disabled={loading}
+                            startContent={<EnvelopeIcon className="w-5 h-5 text-gray-400" />}
+                          />
+                        </div>
+
+                        <div className="mt-4">
+                          <Textarea
+                            label="Delivery Address"
+                            placeholder="Building name, Street, Floor/Unit, Landmarks"
+                            value={deliveryAddress}
+                            onChange={(e) => setDeliveryAddress(e.target.value)}
+                            isRequired
+                            minRows={3}
+                            disabled={loading}
+                            classNames={{
+                              input: "text-base",
+                              label: "text-gray-700 dark:text-gray-300"
+                            }}
+                            startContent={<MapPinIcon className="w-5 h-5 text-gray-400 mt-3" />}
+                          />
+                        </div>
+
+                        <div className="mt-4">
+                          <Textarea
+                            label="Special Instructions (Optional)"
+                            placeholder="Delivery timing preferences, access instructions, etc."
+                            value={notes}
+                            onChange={(e) => setNotes(e.target.value)}
+                            minRows={2}
+                            disabled={loading}
+                          />
+                        </div>
+                      </div>
+                    </motion.div>
+                  )}
+
+                  {activeStep === 'review' && (
+                    <motion.div
+                      key="review"
+                      initial={{ opacity: 0, x: -20 }}
+                      animate={{ opacity: 1, x: 0 }}
+                      exit={{ opacity: 0, x: 20 }}
+                      className="space-y-8"
+                    >
+                      {/* Order Summary Card */}
+                      <div className="bg-white dark:bg-gray-800 rounded-2xl p-6 border border-gray-200 dark:border-gray-700 shadow-lg">
+                        <div className="flex items-center gap-3 mb-6">
+                          <div className="p-3 rounded-xl bg-amber-50 dark:bg-amber-900/30">
+                            <DocumentTextIcon className="w-6 h-6 text-amber-600 dark:text-amber-400" />
+                          </div>
+                          <h3 className="text-xl font-bold text-gray-900 dark:text-white">Order Summary</h3>
+                        </div>
+
+                        <div className="space-y-4">
+                          <div className="grid grid-cols-2 gap-4">
+                            <div>
+                              <h4 className="font-semibold text-gray-900 dark:text-white mb-2">Contact Information</h4>
+                              <div className="space-y-1 text-sm text-gray-600 dark:text-gray-400">
+                                <p>{customerName}</p>
+                                <p>{phoneNumber}</p>
+                                {companyName && <p>{companyName}</p>}
+                              </div>
+                            </div>
+                            <div>
+                              <h4 className="font-semibold text-gray-900 dark:text-white mb-2">Delivery Information</h4>
+                              <div className="space-y-1 text-sm text-gray-600 dark:text-gray-400">
+                                <p>{recipientName}</p>
+                                <p>{recipientPhone}</p>
+                                <p>{deliveryAddress}</p>
+                              </div>
+                            </div>
+                          </div>
+
+                          <Divider />
+
+                          <div>
+                            <h4 className="font-semibold text-gray-900 dark:text-white mb-3">Items</h4>
+                            <div className="space-y-3 max-h-60 overflow-y-auto pr-2">
+                              {cartItems.map((item) => (
+                                <div key={item.id} className="flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-700/50 rounded-lg">
+                                  <div className="flex-1">
+                                    <p className="font-medium text-gray-900 dark:text-white">{item.name}</p>
+                                    <p className="text-sm text-gray-500 dark:text-gray-400">{item.variant} × {item.quantity}</p>
+                                  </div>
+                                  <p className="font-bold text-gray-900 dark:text-white">
+                                    KES {(item.price * item.quantity).toLocaleString()}
+                                  </p>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+              </div>
+
+              {/* Right Column - Order Summary & Payment */}
+              <div className="space-y-6">
+                {/* Order Summary Card */}
+                <Card className="border border-gray-200 dark:border-gray-700 shadow-lg">
+                  <CardBody className="p-6">
+                    <h3 className="text-lg font-bold text-gray-900 dark:text-white mb-4">Procurement Summary</h3>
+
+                    <div className="space-y-3">
+                      <div className="flex justify-between">
+                        <span className="text-gray-600 dark:text-gray-400">Subtotal</span>
+                        <span className="font-medium text-gray-900 dark:text-white">
+                          KES {subtotal.toLocaleString()}
+                        </span>
+                      </div>
+
+                      <div className="flex justify-between">
+                        <span className="text-gray-600 dark:text-gray-400">VAT (16%)</span>
+                        <span className="font-medium text-gray-900 dark:text-white">
+                          KES {vat.toLocaleString()}
+                        </span>
+                      </div>
+
+                      {deliveryFee > 0 && (
+                        <div className="flex justify-between">
+                          <span className="text-gray-600 dark:text-gray-400">Delivery</span>
+                          <span className="font-medium text-emerald-600 dark:text-emerald-400">
+                            KES {deliveryFee.toLocaleString()}
+                          </span>
+                        </div>
+                      )}
+
+                      <Divider />
+
+                      <div className="flex justify-between items-center pt-2">
+                        <span className="text-lg font-bold text-gray-900 dark:text-white">Total</span>
+                        <div className="text-right">
+                          <div className="text-2xl font-bold bg-gradient-to-r from-blue-600 to-cyan-600 bg-clip-text text-transparent">
+                            KES {grandTotal.toLocaleString()}
+                          </div>
+                          <div className="text-xs text-gray-500 dark:text-gray-400">Inclusive of all taxes</div>
+                        </div>
+                      </div>
+                    </div>
+                  </CardBody>
+                </Card>
+
+                {/* Payment Method Card */}
+                <Card className="border border-gray-200 dark:border-gray-700 shadow-lg">
+                  <CardBody className="p-6">
+                    <div className="flex items-center gap-3 mb-4">
+                      <div className="p-2 rounded-lg bg-green-100 dark:bg-green-900/30">
+                        <BanknotesIcon className="w-5 h-5 text-green-600 dark:text-green-400" />
+                      </div>
+                      <h3 className="font-bold text-gray-900 dark:text-white">Payment Method</h3>
+                    </div>
+
+                    <div className="space-y-3">
+                      <div className="flex items-center gap-3 p-3 bg-gradient-to-r from-green-50 to-emerald-50 dark:from-green-900/20 dark:to-emerald-900/20 rounded-lg border border-green-200 dark:border-green-800">
+                        <div className="w-10 h-10 rounded-lg bg-green-500 flex items-center justify-center">
+                          <span className="text-white font-bold text-sm">M</span>
+                        </div>
+                        <div>
+                          <p className="font-semibold text-gray-900 dark:text-white">M-Pesa STK Push</p>
+                          <p className="text-xs text-gray-600 dark:text-gray-400">Secure mobile payment</p>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-2 text-sm text-gray-500 dark:text-gray-400">
+                        <ShieldCheckIcon className="w-4 h-4" />
+                        <span>256-bit encrypted transaction</span>
+                      </div>
+                    </div>
+                  </CardBody>
+                </Card>
+
+                {/* Security Features */}
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="flex items-center gap-2 p-3 bg-gray-50 dark:bg-gray-700/50 rounded-xl">
+                    <LockClosedIcon className="w-4 h-4 text-blue-500" />
+                    <span className="text-xs font-medium text-gray-700 dark:text-gray-300">PCI DSS Compliant</span>
+                  </div>
+                  <div className="flex items-center gap-2 p-3 bg-gray-50 dark:bg-gray-700/50 rounded-xl">
+                    <ChartBarIcon className="w-4 h-4 text-emerald-500" />
+                    <span className="text-xs font-medium text-gray-700 dark:text-gray-300">Real-time Tracking</span>
+                  </div>
+                </div>
+
+                {/* Status Message */}
+                {status && (
+                  <motion.div
+                    initial={{ opacity: 0, y: 10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    className={`p-4 rounded-xl border ${status.type === 'success' ? 'bg-emerald-50 dark:bg-emerald-900/20 border-emerald-200 dark:border-emerald-800' :
+                      status.type === 'error' ? 'bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-800' :
+                        status.type === 'info' ? 'bg-blue-50 dark:bg-blue-900/20 border-blue-200 dark:border-blue-800' :
+                          'bg-amber-50 dark:bg-amber-900/20 border-amber-200 dark:border-amber-800'
+                      }`}
+                  >
+                    <div className="flex items-start gap-3">
+                      <div className={`mt-0.5 ${status.type === 'success' ? 'text-emerald-600 dark:text-emerald-400' :
+                        status.type === 'error' ? 'text-red-600 dark:text-red-400' :
+                          status.type === 'info' ? 'text-blue-600 dark:text-blue-400' :
+                            'text-amber-600 dark:text-amber-400'}`}>
+                        {status.type === 'success' ? <CheckCircleIcon className="w-5 h-5" /> :
+                          status.type === 'error' ? '❌' :
+                            status.type === 'info' ? <ClockIcon className="w-5 h-5" /> :
+                              '⚠️'}
+                      </div>
+                      <div className="flex-1">
+                        <p className="text-sm text-gray-700 dark:text-gray-300">{status.message}</p>
+                        {saleId && (
+                          <p className="text-xs font-mono text-gray-500 dark:text-gray-400 mt-2">
+                            REF: {saleId}
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                  </motion.div>
+                )}
               </div>
             </div>
-
-            {/* Status Message */}
-            {status && (
-              <div className={`p-4 rounded-lg ${status.type === 'success' ? 'bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800' :
-                status.type === 'error' ? 'bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800' :
-                  status.type === 'info' ? 'bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800' :
-                    'bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800'}`}>
-                <div className="flex items-start">
-                  <div className={`mr-3 mt-0.5 ${status.type === 'success' ? 'text-green-600 dark:text-green-400' :
-                    status.type === 'error' ? 'text-red-600 dark:text-red-400' :
-                      status.type === 'info' ? 'text-blue-600 dark:text-blue-400' :
-                        'text-yellow-600 dark:text-yellow-400'}`}>
-                    {status.type === 'success' ? '✅' : status.type === 'error' ? '❌' : status.type === 'info' ? 'ℹ️' : '⚠️'}
-                  </div>
-                  <div className="flex-1">
-                    <p className="text-sm">{status.message}</p>
-                    {saleId && (
-                      <p className="text-xs font-medium mt-2 text-gray-600 dark:text-gray-400">
-                        Order ID: <span className="font-mono">{saleId}</span>
-                      </p>
-                    )}
-                  </div>
-                </div>
-              </div>
-            )}
           </ModalBody>
-          <ModalFooter>
-            <Button
-              variant="flat"
-              onPress={handleModalClose}
-              isDisabled={loading}
-            >
-              Cancel
-            </Button>
-            <Button
-              color="primary"
-              onPress={handleSubmit}
-              isLoading={loading}
-              isDisabled={!isFormValid()}
-              className="min-w-[200px]"
-            >
-              {loading ? "Processing..." : "Place Order & Pay via M-Pesa"}
-            </Button>
+
+          <ModalFooter className="pt-6 pb-8 border-t border-gray-200 dark:border-gray-700">
+            <div className="flex items-center justify-between w-full">
+              <div className="flex gap-3">
+                <Button
+                  variant="bordered"
+                  onPress={handleModalClose}
+                  isDisabled={loading}
+                  className="border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300"
+                >
+                  Cancel
+                </Button>
+
+                {activeStep === 'review' && (
+                  <Button
+                    variant="light"
+                    onPress={() => setActiveStep('details')}
+                    isDisabled={loading}
+                    className="text-gray-700 dark:text-gray-300"
+                    startContent={<ArrowPathIcon className="w-4 h-4" />}
+                  >
+                    Edit Details
+                  </Button>
+                )}
+              </div>
+
+              <div className="flex gap-3">
+                {activeStep === 'details' && (
+                  <Button
+                    color="primary"
+                    variant="bordered"
+                    onPress={() => setActiveStep('review')}
+                    isDisabled={!isFormValid()}
+                    className="border-blue-600 text-blue-600 dark:text-blue-400"
+                  >
+                    Review Order
+                  </Button>
+                )}
+
+                {activeStep === 'review' && (
+                  <Button
+                    color="primary"
+                    onPress={handleSubmit}
+                    isLoading={loading}
+                    isDisabled={!isFormValid()}
+                    className="bg-gradient-to-r from-blue-600 to-cyan-600 text-white font-semibold min-w-[240px] py-6 hover:shadow-xl hover:scale-[1.02] transition-all duration-300"
+                    startContent={<CreditCardIcon className="w-5 h-5" />}
+                  >
+                    {loading ? "Processing..." : "Initiate M-Pesa Payment"}
+                  </Button>
+                )}
+              </div>
+            </div>
           </ModalFooter>
         </ModalContent>
       </Modal>
@@ -576,7 +885,7 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
           saleId={saleId}
           checkoutRequestId={checkoutRequestId}
           phoneNumber={phoneNumber}
-          totalAmount={total}
+          totalAmount={grandTotal}
           onPaymentSuccess={handlePaymentSuccess}
           onPaymentFailure={handlePaymentFailure}
           onPaymentCancel={handlePaymentCancel}

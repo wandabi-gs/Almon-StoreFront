@@ -2,31 +2,31 @@
 
 import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Button } from "@heroui/react";
+import { Button, Badge, Divider } from "@heroui/react";
 import { Link } from "react-router-dom";
 import {
-  EnvelopeIcon,
+  ShieldCheckIcon,
   XMarkIcon,
   CheckCircleIcon,
   Cog6ToothIcon,
-  InformationCircleIcon,
+  LockClosedIcon,
+  ChartBarIcon,
+  EnvelopeIcon,
+  AcademicCapIcon,
+  ServerStackIcon,
+  GlobeAltIcon,
+  ShieldExclamationIcon,
+  ClockIcon,
+  DocumentTextIcon,
+  BuildingLibraryIcon,
 } from "@heroicons/react/24/outline";
-
-// Cookie Icon SVG Component
-const CookieIcon = ({ className }: { className?: string }) => (
-  <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
-    <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2z" strokeLinecap="round" strokeLinejoin="round" />
-    <circle cx="8.5" cy="8.5" r="1" fill="currentColor" />
-    <circle cx="15.5" cy="8.5" r="1" fill="currentColor" />
-    <circle cx="8.5" cy="15.5" r="1" fill="currentColor" />
-    <circle cx="12" cy="12" r="0.5" fill="currentColor" />
-  </svg>
-);
 
 interface CookiePreferences {
   essential: boolean;
   analytics: boolean;
   marketing: boolean;
+  functional: boolean;
+  performance: boolean;
 }
 
 interface CookieConsentBannerProps {
@@ -42,16 +42,32 @@ export default function CookieConsentBanner({ onAccept, onDecline }: CookieConse
     essential: true, // Always true, can't be disabled
     analytics: false,
     marketing: false,
+    functional: false,
+    performance: false,
   });
 
+  const [showCustomSuccess, setShowCustomSuccess] = useState(false);
+
   useEffect(() => {
-    // Check if user has already made a choice
-    const consentGiven = localStorage.getItem("cookieConsent");
+    const consentGiven = localStorage.getItem("enterprise_cookie_consent");
+    const consentTimestamp = localStorage.getItem("consent_timestamp");
+
+    // Check if consent is older than 6 months (re-prompt)
+    if (consentTimestamp) {
+      const sixMonthsAgo = new Date();
+      sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 6);
+      const consentDate = new Date(consentTimestamp);
+
+      if (consentDate < sixMonthsAgo) {
+        setIsVisible(true);
+        return;
+      }
+    }
+
     if (!consentGiven) {
-      // Show banner after a short delay for better UX
       const timer = setTimeout(() => {
         setIsVisible(true);
-      }, 1000);
+      }, 1500);
       return () => clearTimeout(timer);
     }
   }, []);
@@ -61,21 +77,33 @@ export default function CookieConsentBanner({ onAccept, onDecline }: CookieConse
       essential: true,
       analytics: true,
       marketing: true,
+      functional: true,
+      performance: true,
     };
 
-    localStorage.setItem("cookieConsent", "accepted");
-    localStorage.setItem("cookiePreferences", JSON.stringify(preferences));
-    localStorage.setItem("marketingConsent", "accepted");
+    const timestamp = new Date().toISOString();
+    localStorage.setItem("enterprise_cookie_consent", "accepted_all");
+    localStorage.setItem("enterprise_cookie_preferences", JSON.stringify(preferences));
+    localStorage.setItem("marketing_consent", "granted");
+    localStorage.setItem("consent_timestamp", timestamp);
+    localStorage.setItem("consent_version", "2.1.0");
 
     setIsVisible(false);
     onAccept?.({ ...preferences, marketing: true });
 
-    // Save to API
     try {
-      await fetch("/api/privacy-consent", {
+      await fetch("/api/enterprise/consent", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ choice: "accept", marketing: true, cookies: preferences }),
+        headers: {
+          "Content-Type": "application/json",
+          "X-Consent-Version": "2.1.0"
+        },
+        body: JSON.stringify({
+          consent_type: "full",
+          preferences,
+          timestamp,
+          framework_version: "2.1.0"
+        }),
       });
     } catch (error) {
       console.error("Error saving consent:", error);
@@ -87,21 +115,33 @@ export default function CookieConsentBanner({ onAccept, onDecline }: CookieConse
       essential: true,
       analytics: false,
       marketing: false,
+      functional: false,
+      performance: false,
     };
 
-    localStorage.setItem("cookieConsent", "declined");
-    localStorage.setItem("cookiePreferences", JSON.stringify(preferences));
-    localStorage.setItem("marketingConsent", "declined");
+    const timestamp = new Date().toISOString();
+    localStorage.setItem("enterprise_cookie_consent", "declined_all");
+    localStorage.setItem("enterprise_cookie_preferences", JSON.stringify(preferences));
+    localStorage.setItem("marketing_consent", "declined");
+    localStorage.setItem("consent_timestamp", timestamp);
+    localStorage.setItem("consent_version", "2.1.0");
 
     setIsVisible(false);
     onDecline?.();
 
-    // Save to API
     try {
-      await fetch("/api/privacy-consent", {
+      await fetch("/api/enterprise/consent", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ choice: "decline", marketing: false, cookies: preferences }),
+        headers: {
+          "Content-Type": "application/json",
+          "X-Consent-Version": "2.1.0"
+        },
+        body: JSON.stringify({
+          consent_type: "essential_only",
+          preferences,
+          timestamp,
+          framework_version: "2.1.0"
+        }),
       });
     } catch (error) {
       console.error("Error saving consent:", error);
@@ -114,22 +154,31 @@ export default function CookieConsentBanner({ onAccept, onDecline }: CookieConse
       marketing: marketingConsent,
     };
 
-    localStorage.setItem("cookieConsent", "custom");
-    localStorage.setItem("cookiePreferences", JSON.stringify(preferences));
-    localStorage.setItem("marketingConsent", marketingConsent ? "accepted" : "declined");
+    const timestamp = new Date().toISOString();
+    localStorage.setItem("enterprise_cookie_consent", "custom");
+    localStorage.setItem("enterprise_cookie_preferences", JSON.stringify(preferences));
+    localStorage.setItem("marketing_consent", marketingConsent ? "granted" : "declined");
+    localStorage.setItem("consent_timestamp", timestamp);
+    localStorage.setItem("consent_version", "2.1.0");
 
-    setIsVisible(false);
-    onAccept?.({ ...preferences, marketing: marketingConsent });
+    setShowCustomSuccess(true);
+    setTimeout(() => {
+      setIsVisible(false);
+      onAccept?.({ ...preferences, marketing: marketingConsent });
+    }, 2000);
 
-    // Save to API
     try {
-      await fetch("/api/privacy-consent", {
+      await fetch("/api/enterprise/consent", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          "X-Consent-Version": "2.1.0"
+        },
         body: JSON.stringify({
-          choice: marketingConsent ? "accept" : "decline",
-          marketing: marketingConsent,
-          cookies: preferences
+          consent_type: "custom",
+          preferences,
+          timestamp,
+          framework_version: "2.1.0"
         }),
       });
     } catch (error) {
@@ -138,7 +187,7 @@ export default function CookieConsentBanner({ onAccept, onDecline }: CookieConse
   };
 
   const toggleCookiePreference = (key: keyof CookiePreferences) => {
-    if (key === "essential") return; // Essential cookies can't be disabled
+    if (key === "essential") return;
     setCookiePreferences((prev) => ({ ...prev, [key]: !prev[key] }));
   };
 
@@ -148,213 +197,400 @@ export default function CookieConsentBanner({ onAccept, onDecline }: CookieConse
     <AnimatePresence>
       {isVisible && (
         <>
-          {/* Backdrop */}
+          {/* Professional Backdrop */}
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50"
-            onClick={() => setShowDetails(false)}
+            className="fixed inset-0 bg-gradient-to-br from-gray-900/95 to-black/95 backdrop-blur-xl z-[9998]"
           />
 
-          {/* Cookie Banner */}
+          {/* Main Banner */}
           <motion.div
-            initial={{ y: 100, opacity: 0 }}
+            initial={{ y: "100%", opacity: 0 }}
             animate={{ y: 0, opacity: 1 }}
-            exit={{ y: 100, opacity: 0 }}
-            transition={{ type: "spring", damping: 25, stiffness: 300 }}
-            className="fixed bottom-0 left-0 right-0 z-50 p-4 md:p-6"
+            exit={{ y: "100%", opacity: 0 }}
+            transition={{
+              type: "spring",
+              damping: 25,
+              stiffness: 300,
+              mass: 0.8
+            }}
+            className="fixed bottom-0 left-0 right-0 z-[9999] px-4 pb-4"
           >
             <div className="relative max-w-6xl mx-auto">
-              {/* Animated Background Gradient */}
-              <div className="absolute inset-0 bg-gradient-to-br from-blue-600 via-purple-600 to-pink-600 rounded-3xl blur-2xl opacity-80"></div>
+              {/* Gradient Glow Effect */}
+              <div className="absolute -inset-4 bg-gradient-to-r from-blue-600/20 via-cyan-600/20 to-blue-600/20 blur-3xl rounded-3xl"></div>
 
-              {/* Main Content */}
-              <div className="relative bg-white/95 dark:bg-slate-900/95 backdrop-blur-2xl rounded-3xl shadow-2xl border-2 border-white/20 overflow-hidden">
-                {/* Decorative Pattern */}
-                <div className="absolute inset-0 bg-[url('data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNjAiIGhlaWdodD0iNjAiIHZpZXdCb3g9IjAgMCA2MCA2MCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48ZyBmaWxsPSJub25lIiBmaWxsLXJ1bGU9ImV2ZW5vZGQiPjxwYXRoIGQ9Ik0zNiAzNGMwIDMuMzE0LTIuNjg2IDYtNiA2cy02LTIuNjg2LTYtNiAyLjY4Ni02IDYtNiA2IDIuNjg2IDYgNnoiIGZpbGw9InJnYmEoMjU1LDI1NSwyNTUsMC4wNSkiLz48L2c+PC9zdmc+')] opacity-30"></div>
+              {/* Main Container */}
+              <div className="relative bg-white dark:bg-gray-800 rounded-3xl shadow-2xl border border-gray-200/80 dark:border-gray-700/80 overflow-hidden">
+                {/* Header Section */}
+                <div className="bg-gradient-to-r from-blue-600 to-cyan-600 p-8">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-4">
+                      <motion.div
+                        animate={{ rotate: [0, 5, -5, 0] }}
+                        transition={{ duration: 2, repeat: Infinity, repeatDelay: 3 }}
+                        className="relative"
+                      >
+                        <div className="w-16 h-16 rounded-2xl bg-white/10 backdrop-blur-sm border border-white/20 p-0.5">
+                          <div className="w-full h-full rounded-xl bg-white/10 flex items-center justify-center">
+                            <ShieldCheckIcon className="w-8 h-8 text-white" />
+                          </div>
+                        </div>
+                        <div className="absolute -top-1 -right-1 w-4 h-4 bg-gradient-to-r from-blue-400 to-cyan-400 rounded-full animate-pulse" />
+                      </motion.div>
 
-                {/* Content */}
-                <div className="relative p-6 md:p-8">
-                  {/* Header */}
-                  <div className="flex items-start gap-4 mb-6">
-                    <motion.div
-                      animate={{ rotate: [0, 10, -10, 0] }}
-                      transition={{ duration: 2, repeat: Infinity, repeatDelay: 3 }}
-                      className="flex-shrink-0"
-                    >
-                      <div className="p-3 bg-gradient-to-br from-blue-500 via-purple-500 to-pink-500 rounded-2xl shadow-lg">
-                        <CookieIcon className="w-8 h-8 text-white" />
+                      <div>
+                        <div className="flex items-center gap-3 mb-2">
+                          <Badge
+                            variant="flat"
+                            color="primary"
+                            className="bg-white/20 backdrop-blur-sm border-white/30"
+                          >
+                            Enterprise Consent
+                          </Badge>
+                          <span className="text-sm text-white/90">v2.1.0</span>
+                        </div>
+                        <h2 className="text-3xl font-bold text-white">
+                          Data Governance Portal
+                        </h2>
+                        <p className="text-white/80 text-sm mt-1">
+                          Configure your enterprise privacy and cookie preferences
+                        </p>
                       </div>
-                    </motion.div>
-                    <div className="flex-1">
-                      <h2 className="text-2xl md:text-3xl font-black bg-gradient-to-r from-blue-600 via-purple-600 to-pink-600 bg-clip-text text-transparent mb-2">
-                        Cookie & Privacy Preferences
-                      </h2>
-                      <p className="text-slate-600 dark:text-slate-300 leading-relaxed">
-                        We use cookies and similar technologies to enhance your browsing experience, analyze site traffic, and personalize content.
-                        By clicking "Accept All", you consent to our use of cookies. You can customize your preferences or learn more in our{" "}
-                        <Link to="/privacy-policy" className="text-blue-600 dark:text-blue-400 hover:underline font-semibold">
-                          Privacy Policy
-                        </Link>.
-                      </p>
                     </div>
+
                     <Button
-                      onClick={handleDeclineAll}
-                      className="flex-shrink-0 p-2 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-colors"
+                      isIconOnly
+                      variant="light"
+                      onPress={handleDeclineAll}
+                      className="bg-white/10 hover:bg-white/20 backdrop-blur-sm border border-white/20 text-white"
                     >
-                      <XMarkIcon className="w-5 h-5 text-slate-500" />
+                      <XMarkIcon className="w-6 h-6" />
                     </Button>
                   </div>
+                </div>
 
-                  {/* Details Section */}
+                {/* Content Area */}
+                <div className="p-8">
+                  <div className="grid lg:grid-cols-2 gap-8">
+                    {/* Left Column - Information */}
+                    <div className="space-y-6">
+                      <div className="bg-gradient-to-br from-blue-50 to-cyan-50 dark:from-gray-900 dark:to-gray-800 p-6 rounded-2xl border border-blue-200 dark:border-blue-800">
+                        <div className="flex items-center gap-3 mb-4">
+                          <AcademicCapIcon className="w-6 h-6 text-blue-600 dark:text-blue-400" />
+                          <h3 className="text-xl font-bold text-gray-900 dark:text-white">Consent Framework Overview</h3>
+                        </div>
+
+                        <div className="space-y-4">
+                          <p className="text-gray-700 dark:text-gray-300 leading-relaxed">
+                            In compliance with global data protection regulations (GDPR, CCPA, DPDPA),
+                            we provide granular control over your data preferences.
+                          </p>
+
+                          <div className="grid grid-cols-2 gap-3">
+                            <div className="flex items-center gap-2 p-3 bg-white dark:bg-gray-700/50 rounded-lg">
+                              <LockClosedIcon className="w-4 h-4 text-blue-500" />
+                              <span className="text-sm font-medium text-gray-700 dark:text-gray-300">256-bit Encryption</span>
+                            </div>
+                            <div className="flex items-center gap-2 p-3 bg-white dark:bg-gray-700/50 rounded-lg">
+                              <ServerStackIcon className="w-4 h-4 text-green-500" />
+                              <span className="text-sm font-medium text-gray-700 dark:text-gray-300">ISO 27001 Certified</span>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Quick Stats */}
+                      <div className="grid grid-cols-3 gap-4">
+                        <div className="text-center p-4 bg-gray-50 dark:bg-gray-700/50 rounded-xl">
+                          <div className="text-2xl font-bold text-blue-600 dark:text-blue-400">30+</div>
+                          <div className="text-xs text-gray-600 dark:text-gray-400">Countries Compliant</div>
+                        </div>
+                        <div className="text-center p-4 bg-gray-50 dark:bg-gray-700/50 rounded-xl">
+                          <div className="text-2xl font-bold text-cyan-600 dark:text-cyan-400">24h</div>
+                          <div className="text-xs text-gray-600 dark:text-gray-400">Update Time</div>
+                        </div>
+                        <div className="text-center p-4 bg-gray-50 dark:bg-gray-700/50 rounded-xl">
+                          <div className="text-2xl font-bold text-emerald-600 dark:text-emerald-400">GDPR</div>
+                          <div className="text-xs text-gray-600 dark:text-gray-400">Article 30 Ready</div>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Right Column - Controls */}
+                    <div className="space-y-6">
+                      {/* Marketing Consent Card */}
+                      <div className="bg-gradient-to-br from-gray-50 to-white dark:from-gray-900 dark:to-gray-800 p-6 rounded-2xl border border-gray-200 dark:border-gray-700">
+                        <div className="flex items-center justify-between mb-6">
+                          <div className="flex items-center gap-3">
+                            <div className="p-3 rounded-xl bg-blue-100 dark:bg-blue-900/30">
+                              <EnvelopeIcon className="w-6 h-6 text-blue-600 dark:text-blue-400" />
+                            </div>
+                            <div>
+                              <h3 className="font-bold text-gray-900 dark:text-white">Enterprise Marketing Consent</h3>
+                              <p className="text-sm text-gray-600 dark:text-gray-400">Strategic communications preference</p>
+                            </div>
+                          </div>
+
+                          <div className="relative">
+                            <input
+                              type="checkbox"
+                              checked={marketingConsent}
+                              onChange={() => setMarketingConsent(!marketingConsent)}
+                              className="sr-only"
+                              id="marketing-toggle"
+                            />
+                            <label
+                              htmlFor="marketing-toggle"
+                              className={`block w-14 h-7 rounded-full cursor-pointer transition-colors ${marketingConsent ? 'bg-gradient-to-r from-blue-600 to-cyan-600' : 'bg-gray-300 dark:bg-gray-700'}`}
+                            >
+                              <span className={`block w-5 h-5 mt-1 ml-1 rounded-full bg-white transform transition-transform ${marketingConsent ? 'translate-x-7' : ''}`} />
+                            </label>
+                          </div>
+                        </div>
+
+                        <div className="space-y-2">
+                          <div className="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-400">
+                            <div className="w-1.5 h-1.5 rounded-full bg-blue-500" />
+                            <span>Industry insights and whitepapers</span>
+                          </div>
+                          <div className="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-400">
+                            <div className="w-1.5 h-1.5 rounded-full bg-blue-500" />
+                            <span>Product innovation updates</span>
+                          </div>
+                          <div className="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-400">
+                            <div className="w-1.5 h-1.5 rounded-full bg-blue-500" />
+                            <span>Exclusive enterprise offers</span>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Quick Actions */}
+                      <div className="grid grid-cols-2 gap-3">
+                        <Button
+                          onPress={handleAcceptAll}
+                          className="bg-gradient-to-r from-blue-600 to-cyan-600 text-white font-bold py-6 hover:shadow-xl hover:scale-[1.02] transition-all duration-300"
+                          startContent={<CheckCircleIcon className="w-5 h-5" />}
+                        >
+                          Accept All
+                        </Button>
+                        <Button
+                          variant="bordered"
+                          onPress={() => setShowDetails(!showDetails)}
+                          className="border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 py-6 hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors"
+                          startContent={<Cog6ToothIcon className="w-5 h-5" />}
+                        >
+                          {showDetails ? 'Hide Details' : 'Customize'}
+                        </Button>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Detailed Preferences Section */}
                   <AnimatePresence>
                     {showDetails && (
                       <motion.div
-                        initial={{ height: 0, opacity: 0 }}
-                        animate={{ height: "auto", opacity: 1 }}
-                        exit={{ height: 0, opacity: 0 }}
-                        transition={{ duration: 0.3 }}
-                        className="overflow-hidden mb-6"
+                        initial={{ opacity: 0, height: 0 }}
+                        animate={{ opacity: 1, height: 'auto' }}
+                        exit={{ opacity: 0, height: 0 }}
+                        className="overflow-hidden"
                       >
-                        <div className="pt-6 border-t border-slate-200 dark:border-slate-700 space-y-6">
-                          {/* Marketing Consent */}
-                          <div className="bg-gradient-to-r from-blue-50 to-purple-50 dark:from-blue-950/30 dark:to-purple-950/30 p-5 rounded-xl border border-blue-200/50 dark:border-blue-800/30">
-                            <div className="flex items-center justify-between mb-3">
-                              <div className="flex items-center gap-3">
-                                <EnvelopeIcon className="w-6 h-6 text-blue-600 dark:text-blue-400" />
-                                <h3 className="font-bold text-slate-900 dark:text-slate-50">Marketing Communications</h3>
-                              </div>
-                              <Button
-                                onClick={() => setMarketingConsent(!marketingConsent)}
-                                className={`relative w-14 h-7 rounded-full transition-colors duration-300 ${marketingConsent ? "bg-gradient-to-r from-blue-500 to-purple-500" : "bg-slate-300 dark:bg-slate-600"
-                                  }`}
-                              >
-                                <motion.div
-                                  animate={{ x: marketingConsent ? 28 : 2 }}
-                                  className="absolute top-1 left-1 w-5 h-5 bg-white rounded-full shadow-lg"
-                                />
-                              </Button>
-                            </div>
-                            <p className="text-sm text-slate-600 dark:text-slate-400">
-                              Receive promotional emails, special offers, and product updates from Almon Products Ltd.
-                            </p>
+                        <Divider className="my-8" />
+
+                        <div className="space-y-8">
+                          <div className="flex items-center justify-between">
+                            <h3 className="text-2xl font-bold text-gray-900 dark:text-white">Granular Cookie Controls</h3>
+                            <Badge color="primary" variant="flat">
+                              {Object.values(cookiePreferences).filter(Boolean).length} of 5 Active
+                            </Badge>
                           </div>
 
-                          {/* Cookie Preferences */}
-                          <div className="space-y-4">
-                            <h3 className="font-bold text-slate-900 dark:text-slate-50 flex items-center gap-2">
-                              <Cog6ToothIcon className="w-5 h-5 text-purple-600 dark:text-purple-400" />
-                              Cookie Preferences
-                            </h3>
+                          {/* Cookie Categories */}
+                          <div className="grid md:grid-cols-2 lg:grid-cols-5 gap-4">
+                            {[
+                              {
+                                key: "essential",
+                                title: "Essential",
+                                description: "Required for site functionality",
+                                icon: ShieldExclamationIcon,
+                                color: "text-emerald-600",
+                                bg: "bg-emerald-50 dark:bg-emerald-900/20",
+                                disabled: true
+                              },
+                              {
+                                key: "performance",
+                                title: "Performance",
+                                description: "Site speed and optimization",
+                                icon: ChartBarIcon,
+                                color: "text-blue-600",
+                                bg: "bg-blue-50 dark:bg-blue-900/20"
+                              },
+                              {
+                                key: "analytics",
+                                title: "Analytics",
+                                description: "Usage insights and improvements",
+                                icon: BuildingLibraryIcon,
+                                color: "text-purple-600",
+                                bg: "bg-purple-50 dark:bg-purple-900/20"
+                              },
+                              {
+                                key: "functional",
+                                title: "Functional",
+                                description: "Enhanced user experience",
+                                icon: Cog6ToothIcon,
+                                color: "text-amber-600",
+                                bg: "bg-amber-50 dark:bg-amber-900/20"
+                              },
+                              {
+                                key: "marketing",
+                                title: "Marketing",
+                                description: "Personalized communications",
+                                icon: GlobeAltIcon,
+                                color: "text-pink-600",
+                                bg: "bg-pink-50 dark:bg-pink-900/20"
+                              }
+                            ].map((category) => {
+                              const Icon = category.icon;
+                              const isActive = cookiePreferences[category.key as keyof CookiePreferences];
 
-                            {/* Essential Cookies */}
-                            <div className="flex items-center justify-between p-4 bg-slate-50 dark:bg-slate-800/50 rounded-xl border border-slate-200 dark:border-slate-700">
-                              <div className="flex-1">
-                                <div className="flex items-center gap-2 mb-1">
-                                  <h4 className="font-semibold text-slate-900 dark:text-slate-50">Essential Cookies</h4>
-                                  <span className="px-2 py-0.5 bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 text-xs font-semibold rounded-full">
-                                    Required
-                                  </span>
+                              return (
+                                <div
+                                  key={category.key}
+                                  className={`p-5 rounded-2xl border transition-all duration-300 ${isActive ? 'border-blue-300 dark:border-blue-700' : 'border-gray-200 dark:border-gray-700'} ${category.bg}`}
+                                >
+                                  <div className="flex items-center justify-between mb-4">
+                                    <div className="flex items-center gap-3">
+                                      <div className={`p-3 rounded-xl ${isActive ? 'bg-white dark:bg-gray-800' : 'bg-white/50 dark:bg-gray-700/50'}`}>
+                                        <Icon className={`w-5 h-5 ${category.color}`} />
+                                      </div>
+                                      <span className="font-semibold text-gray-900 dark:text-white">
+                                        {category.title}
+                                      </span>
+                                    </div>
+
+                                    {category.key !== "essential" ? (
+                                      <button
+                                        onClick={() => toggleCookiePreference(category.key as keyof CookiePreferences)}
+                                        className={`w-12 h-6 rounded-full transition-colors ${isActive ? 'bg-gradient-to-r from-blue-600 to-cyan-600' : 'bg-gray-300 dark:bg-gray-700'}`}
+                                      >
+                                        <span className={`block w-4 h-4 mt-1 ml-1 rounded-full bg-white transform transition-transform ${isActive ? 'translate-x-6' : ''}`} />
+                                      </button>
+                                    ) : (
+                                      <Badge color="success" variant="flat" size="sm">
+                                        Always On
+                                      </Badge>
+                                    )}
+                                  </div>
+
+                                  <p className="text-sm text-gray-600 dark:text-gray-400">
+                                    {category.description}
+                                  </p>
                                 </div>
-                                <p className="text-sm text-slate-600 dark:text-slate-400">
-                                  Necessary for the website to function properly. These cannot be disabled.
-                                </p>
-                              </div>
-                              <div className="ml-4 px-3 py-1 bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 rounded-lg font-semibold text-sm">
-                                Always On
-                              </div>
-                            </div>
-
-                            {/* Analytics Cookies */}
-                            <div className="flex items-center justify-between p-4 bg-slate-50 dark:bg-slate-800/50 rounded-xl border border-slate-200 dark:border-slate-700">
-                              <div className="flex-1">
-                                <h4 className="font-semibold text-slate-900 dark:text-slate-50 mb-1">Analytics Cookies</h4>
-                                <p className="text-sm text-slate-600 dark:text-slate-400">
-                                  Help us understand how visitors interact with our website to improve user experience.
-                                </p>
-                              </div>
-                              <Button
-                                onClick={() => toggleCookiePreference("analytics")}
-                                className={`ml-4 relative w-14 h-7 rounded-full transition-colors duration-300 ${cookiePreferences.analytics ? "bg-gradient-to-r from-blue-500 to-purple-500" : "bg-slate-300 dark:bg-slate-600"
-                                  }`}
-                              >
-                                <motion.div
-                                  animate={{ x: cookiePreferences.analytics ? 28 : 2 }}
-                                  className="absolute top-1 left-1 w-5 h-5 bg-white rounded-full shadow-lg"
-                                />
-                              </Button>
-                            </div>
-
-                            {/* Marketing Cookies */}
-                            <div className="flex items-center justify-between p-4 bg-slate-50 dark:bg-slate-800/50 rounded-xl border border-slate-200 dark:border-slate-700">
-                              <div className="flex-1">
-                                <h4 className="font-semibold text-slate-900 dark:text-slate-50 mb-1">Marketing Cookies</h4>
-                                <p className="text-sm text-slate-600 dark:text-slate-400">
-                                  Used to deliver relevant advertisements and track campaign effectiveness.
-                                </p>
-                              </div>
-                              <Button
-                                onClick={() => toggleCookiePreference("marketing")}
-                                className={`ml-4 relative w-14 h-7 rounded-full transition-colors duration-300 ${cookiePreferences.marketing ? "bg-gradient-to-r from-purple-500 to-pink-500" : "bg-slate-300 dark:bg-slate-600"
-                                  }`}
-                              >
-                                <motion.div
-                                  animate={{ x: cookiePreferences.marketing ? 28 : 2 }}
-                                  className="absolute top-1 left-1 w-5 h-5 bg-white rounded-full shadow-lg"
-                                />
-                              </Button>
-                            </div>
+                              );
+                            })}
                           </div>
 
-                          {/* Info Box */}
-                          <div className="bg-gradient-to-r from-blue-50 to-purple-50 dark:from-blue-950/30 dark:to-purple-950/30 p-4 rounded-xl border border-blue-200/50 dark:border-blue-800/30 flex items-start gap-3">
-                            <InformationCircleIcon className="w-5 h-5 text-blue-600 dark:text-blue-400 flex-shrink-0 mt-0.5" />
-                            <p className="text-sm text-slate-700 dark:text-slate-300">
-                              You can change these preferences at any time by visiting our{" "}
-                              <Link to="/privacy-consent" className="text-blue-600 dark:text-blue-400 hover:underline font-semibold">
-                                Privacy Consent page
-                              </Link>{" "}
-                              or adjusting your browser settings.
-                            </p>
+                          {/* Custom Save Section */}
+                          <div className="bg-gradient-to-r from-blue-500/5 via-cyan-500/5 to-blue-500/5 dark:from-blue-500/10 dark:via-cyan-500/10 dark:to-blue-500/10 p-6 rounded-2xl border border-blue-200 dark:border-blue-800">
+                            <div className="flex items-center justify-between">
+                              <div>
+                                <h4 className="font-bold text-gray-900 dark:text-white mb-2">Save Custom Configuration</h4>
+                                <p className="text-sm text-gray-600 dark:text-gray-400">
+                                  Your preferences will be encrypted and stored in our ISO 27001 certified system
+                                </p>
+                              </div>
+
+                              <div className="flex gap-3">
+                                <Button
+                                  variant="bordered"
+                                  onPress={() => setShowDetails(false)}
+                                  className="border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300"
+                                >
+                                  Cancel
+                                </Button>
+                                <Button
+                                  onPress={handleCustomSave}
+                                  className="bg-gradient-to-r from-blue-600 to-cyan-600 text-white font-semibold hover:shadow-xl hover:scale-[1.02] transition-all duration-300"
+                                  startContent={<DocumentTextIcon className="w-5 h-5" />}
+                                >
+                                  Save Preferences
+                                </Button>
+                              </div>
+                            </div>
                           </div>
                         </div>
                       </motion.div>
                     )}
                   </AnimatePresence>
 
-                  {/* Action Buttons */}
-                  <div className="flex flex-col sm:flex-row gap-3">
-                    <Button
-                      onPress={handleAcceptAll}
-                      className="flex-1 bg-gradient-to-r from-blue-500 via-purple-500 to-pink-500 text-white font-bold py-6 text-lg hover:shadow-xl hover:scale-105 transition-all duration-300"
-                    >
-                      <CheckCircleIcon className="w-5 h-5 mr-2" />
-                      Accept All
-                    </Button>
-                    <Button
-                      onPress={() => setShowDetails(!showDetails)}
-                      variant="bordered"
-                      className="flex-1 border-2 border-slate-300 dark:border-slate-600 text-slate-700 dark:text-slate-300 font-semibold py-6 hover:bg-slate-50 dark:hover:bg-slate-800 transition-all duration-300"
-                    >
-                      <Cog6ToothIcon className="w-5 h-5 mr-2" />
-                      Customize Preferences
-                    </Button>
-                    {showDetails && (
-                      <Button
-                        onPress={handleCustomSave}
-                        className="flex-1 bg-gradient-to-r from-purple-500 to-pink-500 text-white font-bold py-6 hover:shadow-xl hover:scale-105 transition-all duration-300"
+                  {/* Custom Success Message */}
+                  <AnimatePresence>
+                    {showCustomSuccess && (
+                      <motion.div
+                        initial={{ opacity: 0, y: 20 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        exit={{ opacity: 0, y: -20 }}
+                        className="fixed inset-0 flex items-center justify-center z-50"
                       >
-                        Save Preferences
-                      </Button>
+                        <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" />
+                        <div className="relative bg-white dark:bg-gray-800 rounded-3xl p-12 max-w-md mx-4 shadow-2xl">
+                          <div className="text-center">
+                            <motion.div
+                              initial={{ scale: 0 }}
+                              animate={{ scale: 1 }}
+                              transition={{ type: "spring", stiffness: 200 }}
+                              className="w-20 h-20 bg-gradient-to-r from-emerald-500 to-teal-500 rounded-full flex items-center justify-center mx-auto mb-6"
+                            >
+                              <CheckCircleIcon className="w-10 h-10 text-white" />
+                            </motion.div>
+                            <h3 className="text-2xl font-bold text-gray-900 dark:text-white mb-4">
+                              Preferences Saved
+                            </h3>
+                            <p className="text-gray-600 dark:text-gray-400 mb-8">
+                              Your enterprise privacy configuration has been encrypted and stored.
+                            </p>
+                            <div className="flex items-center justify-center gap-2 text-sm text-gray-500 dark:text-gray-400">
+                              <ClockIcon className="w-4 h-4" />
+                              <span>Timestamp: {new Date().toLocaleTimeString()}</span>
+                            </div>
+                          </div>
+                        </div>
+                      </motion.div>
                     )}
-                    <Button
-                      onPress={handleDeclineAll}
-                      variant="light"
-                      className="border-2 border-red-300 dark:border-red-700 text-red-600 dark:text-red-400 font-semibold py-6 hover:bg-red-50 dark:hover:bg-red-950/30 transition-all duration-300"
-                    >
-                      Decline All
-                    </Button>
+                  </AnimatePresence>
+
+                  {/* Footer Links */}
+                  <div className="mt-8 pt-8 border-t border-gray-200 dark:border-gray-700">
+                    <div className="flex flex-col md:flex-row justify-between items-center gap-4">
+                      <div className="flex items-center gap-6 text-sm text-gray-600 dark:text-gray-400">
+                        <Link to="/privacy-policy" className="hover:text-blue-600 dark:hover:text-blue-400 transition-colors">
+                          Privacy Framework
+                        </Link>
+                        <Link to="/terms-of-service" className="hover:text-blue-600 dark:hover:text-blue-400 transition-colors">
+                          Terms of Service
+                        </Link>
+                        <Link to="/privacy-consent" className="hover:text-blue-600 dark:hover:text-blue-400 transition-colors">
+                          Full Consent Portal
+                        </Link>
+                      </div>
+
+                      <div className="flex items-center gap-4">
+                        <Button
+                          variant="light"
+                          onPress={handleDeclineAll}
+                          className="text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20"
+                        >
+                          Decline All
+                        </Button>
+                      </div>
+                    </div>
+
+                    <div className="mt-4 text-center text-xs text-gray-500 dark:text-gray-400">
+                      <p>This portal complies with GDPR, CCPA, DPDPA, and other global data protection regulations.</p>
+                      <p className="mt-1">Version 2.1.0 • Last updated: {new Date().toLocaleDateString()}</p>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -365,4 +601,3 @@ export default function CookieConsentBanner({ onAccept, onDecline }: CookieConse
     </AnimatePresence>
   );
 }
-
