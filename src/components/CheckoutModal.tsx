@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef, useCallback } from "react";
 import {
   Modal,
   ModalContent,
@@ -30,7 +30,8 @@ import {
   ArrowPathIcon,
   BanknotesIcon,
   ChartBarIcon,
-  XMarkIcon
+  XMarkIcon,
+  ChevronLeftIcon
 } from "@heroicons/react/24/outline";
 
 interface CartItem {
@@ -169,6 +170,10 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
   // Responsive states
   const [isMobile, setIsMobile] = useState(false);
   const [isTablet, setIsTablet] = useState(false);
+  const [keyboardVisible, setKeyboardVisible] = useState(false);
+
+  // Ref for scrollable content wrapper (not ModalBody)
+  const contentWrapperRef = useRef<HTMLDivElement>(null);
 
   const subtotal = cartItems.reduce((sum, item) => sum + (item.price * item.quantity), 0);
   const vat = subtotal * 0.16;
@@ -178,15 +183,62 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
   useEffect(() => {
     const checkScreenSize = () => {
       const width = window.innerWidth;
+      const height = window.innerHeight;
       setIsMobile(width < 768);
       setIsTablet(width >= 768 && width < 1024);
+
+      // Check if keyboard is visible (viewport height reduced significantly)
+      setKeyboardVisible(height < width * 0.8);
     };
 
     checkScreenSize();
     window.addEventListener('resize', checkScreenSize);
+    window.addEventListener('orientationchange', checkScreenSize);
 
-    return () => window.removeEventListener('resize', checkScreenSize);
+    return () => {
+      window.removeEventListener('resize', checkScreenSize);
+      window.removeEventListener('orientationchange', checkScreenSize);
+    };
   }, []);
+
+  // Handle keyboard visibility for mobile
+  const handleFocus = useCallback((e: Event) => {
+    setKeyboardVisible(true);
+    // Scroll to active input
+    setTimeout(() => {
+      const target = e.target as HTMLElement;
+      if (target && contentWrapperRef.current) {
+        target.scrollIntoView({
+          behavior: 'smooth',
+          block: 'center',
+          inline: 'nearest'
+        });
+      }
+    }, 100);
+  }, []);
+
+  const handleBlur = useCallback(() => {
+    setKeyboardVisible(false);
+  }, []);
+
+  useEffect(() => {
+    if (!isMobile || !isOpen) return;
+
+    const inputs = document.querySelectorAll('input, textarea');
+    const focusListener = handleFocus as EventListener;
+
+    inputs.forEach(input => {
+      input.addEventListener('focus', focusListener);
+      input.addEventListener('blur', handleBlur);
+    });
+
+    return () => {
+      inputs.forEach(input => {
+        input.removeEventListener('focus', focusListener);
+        input.removeEventListener('blur', handleBlur);
+      });
+    };
+  }, [isMobile, isOpen, activeStep, handleFocus, handleBlur]);
 
   // Show toast function
   const showToast = (message: string, type: 'success' | 'error' | 'info') => {
@@ -208,6 +260,7 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
     setStatus(null);
     setSaleId(null);
     setActiveStep('details');
+    setKeyboardVisible(false);
   };
 
   // Handle modal close with form reset
@@ -286,7 +339,7 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
   const handleSubmit = async () => {
     setStatus(null);
 
-    // Validation (same as before)
+    // Validation
     if (!customerName || !phoneNumber || !recipientName || !recipientPhone || !deliveryAddress) {
       setStatus({
         type: 'error',
@@ -390,7 +443,6 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
         console.log("Initiating payment via:", `${API_BASE_URL}/customer/orders/${id}/pay`);
 
         // Get the correct amount from the server response
-        // Use payable_amount or total_amount from the order creation response
         const paymentAmount = orderResponse?.payable_amount ||
           orderResponse?.total_amount ||
           orderCheck.data?.payable_amount ||
@@ -404,7 +456,7 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
           sale_id: id,
           payment_method: "mpesa",
           phone_number: formatPhoneForMpesa(phoneNumber),
-          amount: parseFloat(paymentAmount) // Use the server-provided amount
+          amount: parseFloat(paymentAmount)
         };
 
         console.log("Payment request data:", requestData);
@@ -554,7 +606,7 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
     // Mobile: Compact step indicator
     if (isMobile) {
       return (
-        <div className="mb-6 px-2">
+        <div className="mb-4 px-2">
           <div className="flex items-center justify-between">
             {steps.map((step) => {
               const Icon = step.icon;
@@ -565,20 +617,20 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
 
               return (
                 <div key={step.key} className="flex flex-col items-center flex-1">
-                  <div className={`w-10 h-10 rounded-full flex items-center justify-center border-2 transition-all duration-300 ${isActive
+                  <div className={`w-8 h-8 rounded-full flex items-center justify-center border-2 transition-all duration-300 ${isActive
                     ? 'bg-gradient-to-r from-blue-600 to-cyan-600 border-blue-600 text-white'
                     : isCompleted
                       ? 'bg-emerald-500 border-emerald-500 text-white'
                       : 'bg-gray-100 dark:bg-gray-800 border-gray-300 dark:border-gray-600 text-gray-500 dark:text-gray-400'
                     }`}>
                     {isCompleted ? (
-                      <CheckCircleIcon className="w-5 h-5" />
+                      <CheckCircleIcon className="w-4 h-4" />
                     ) : (
-                      <Icon className="w-5 h-5" />
+                      <Icon className="w-4 h-4" />
                     )}
                   </div>
-                  <span className={`text-xs font-medium mt-2 ${isActive || isCompleted ? 'text-gray-900 dark:text-white' : 'text-gray-500 dark:text-gray-400'}`}>
-                    {isMobile && step.key !== 'details' ? '' : step.label}
+                  <span className={`text-xs font-medium mt-1 ${isActive || isCompleted ? 'text-gray-900 dark:text-white' : 'text-gray-500 dark:text-gray-400'}`}>
+                    {step.label}
                   </span>
                 </div>
               );
@@ -643,6 +695,42 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
     return '5xl';
   };
 
+  // Mobile header for better navigation
+  const renderMobileHeader = () => (
+    <div className="sticky top-0 z-10 bg-gradient-to-b from-white to-gray-50 dark:from-gray-900 dark:to-gray-800 border-b border-gray-200 dark:border-gray-700 p-4">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-3">
+          <Button
+            isIconOnly
+            variant="light"
+            size="sm"
+            onPress={activeStep === 'review' ? () => setActiveStep('details') : handleModalClose}
+            className="w-8 h-8 min-w-8"
+          >
+            <ChevronLeftIcon className="w-5 h-5" />
+          </Button>
+          <div>
+            <h2 className="font-bold bg-gradient-to-r from-blue-600 to-cyan-600 bg-clip-text text-transparent text-lg">
+              {activeStep === 'details' ? 'Checkout Details' :
+                activeStep === 'review' ? 'Review Order' : 'Payment'}
+            </h2>
+            <p className="text-xs text-gray-600 dark:text-gray-400">
+              Step {activeStep === 'details' ? '1' : activeStep === 'review' ? '2' : '3'} of 3
+            </p>
+          </div>
+        </div>
+        <Badge
+          color="primary"
+          variant="flat"
+          size="sm"
+          className="bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400"
+        >
+          {cartItems.length} Items
+        </Badge>
+      </div>
+    </div>
+  );
+
   return (
     <>
       {/* Custom Toast Notification */}
@@ -659,421 +747,771 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
         isOpen={isOpen}
         onClose={handleModalClose}
         size={getModalSize()}
-        scrollBehavior="outside"
+        scrollBehavior="inside"
         placement={isMobile ? "bottom" : "auto"}
         classNames={{
           base: "z-[9999]",
           backdrop: "bg-black/60 backdrop-blur-xl",
           wrapper: isMobile ? "items-end" : "",
+          body: isMobile ? "p-0" : "",
+        }}
+        motionProps={{
+          variants: {
+            enter: {
+              y: 0,
+              opacity: 1,
+              transition: {
+                duration: 0.3,
+                ease: "easeOut",
+              },
+            },
+            exit: {
+              y: isMobile ? "100%" : 0,
+              opacity: 0,
+              transition: {
+                duration: 0.2,
+                ease: "easeIn",
+              },
+            },
+          }
         }}
       >
-        <ModalContent className="bg-gradient-to-b from-white to-gray-50 dark:from-gray-900 dark:to-gray-800 border border-gray-200 dark:border-gray-700 shadow-3xl h-[90vh] md:h-auto">
-          <ModalHeader className="pt-6 pb-4 md:pt-8 md:pb-6 px-4 md:px-6">
-            <div className="flex items-center justify-between w-full">
-              <div className="flex items-center gap-3">
-                <div className={`rounded-2xl bg-gradient-to-br from-blue-600 to-cyan-600 p-0.5 ${isMobile ? 'w-12 h-12' : 'w-16 h-16'}`}>
-                  <div className="w-full h-full rounded-xl bg-white dark:bg-gray-900 flex items-center justify-center">
-                    <CreditCardIcon className={`${isMobile ? 'w-6 h-6' : 'w-8 h-8'} text-blue-600 dark:text-blue-400`} />
-                  </div>
-                </div>
-                <div>
-                  <h2 className={`font-bold bg-gradient-to-r from-blue-600 to-cyan-600 bg-clip-text text-transparent ${isMobile ? 'text-xl' : 'text-2xl md:text-3xl'}`}>
-                    {isMobile ? 'Checkout' : 'Enterprise Procurement'}
-                  </h2>
-                  <p className={`text-gray-600 dark:text-gray-400 ${isMobile ? 'text-xs' : 'text-sm'}`}>
-                    {isMobile ? 'Complete your order' : 'Complete your corporate order with secure payment'}
-                  </p>
-                </div>
-              </div>
+        <ModalContent
+          className={`bg-gradient-to-b from-white to-gray-50 dark:from-gray-900 dark:to-gray-800 border border-gray-200 dark:border-gray-700 shadow-3xl ${isMobile
+            ? `max-h-[95vh] ${keyboardVisible ? 'h-[85vh]' : 'h-[90vh]'}`
+            : 'h-auto'
+            }`}
+        >
+          {isMobile ? (
+            <>
+              {renderMobileHeader()}
+              <ModalBody className={`overflow-y-auto flex-1 px-4 ${keyboardVisible ? 'pb-32' : 'pb-4'}`}>
+                <div ref={contentWrapperRef} className="space-y-6">
+                  {renderStepIndicator()}
 
-              {!isMobile && (
-                <Badge
-                  color="primary"
-                  variant="flat"
-                  className="bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400"
-                >
-                  {cartItems.length} Items
-                </Badge>
-              )}
-            </div>
-          </ModalHeader>
+                  <AnimatePresence mode="wait">
+                    {activeStep === 'details' && (
+                      <motion.div
+                        key="details"
+                        initial={{ opacity: 0, y: 10 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        exit={{ opacity: 0, y: -10 }}
+                        className="space-y-6"
+                      >
+                        {/* Customer Information */}
+                        <div className="bg-white dark:bg-gray-800 rounded-xl p-4 border border-gray-200 dark:border-gray-700 shadow-sm">
+                          <div className="flex items-center gap-3 mb-4">
+                            <div className="p-2 rounded-lg bg-blue-50 dark:bg-blue-900/30">
+                              <UserCircleIcon className="w-5 h-5 text-blue-600 dark:text-blue-400" />
+                            </div>
+                            <h3 className="font-bold text-gray-900 dark:text-white">Primary Contact</h3>
+                          </div>
 
-          <ModalBody className="pb-0 px-4 md:px-6 overflow-y-auto">
-            {renderStepIndicator()}
+                          <div className="space-y-4">
+                            <Input
+                              label="Full Name"
+                              placeholder="John Doe"
+                              value={customerName}
+                              onChange={(e) => setCustomerName(e.target.value)}
+                              isRequired
+                              disabled={loading}
+                              size="sm"
+                              classNames={{
+                                input: "text-sm py-3",
+                                label: "text-sm text-gray-700 dark:text-gray-300"
+                              }}
+                            />
+                            <Input
+                              type="tel"
+                              label="Phone Number"
+                              placeholder="07XXXXXXXX"
+                              value={phoneNumber}
+                              onChange={(e) => setPhoneNumber(e.target.value)}
+                              isRequired
+                              disabled={loading}
+                              startContent={<PhoneIcon className="w-4 h-4 text-gray-400" />}
+                              size="sm"
+                              classNames={{
+                                input: "text-sm py-3",
+                                label: "text-sm text-gray-700 dark:text-gray-300"
+                              }}
+                            />
+                          </div>
+                        </div>
 
-            <div className={`${isMobile ? 'space-y-6' : 'grid lg:grid-cols-3 gap-6 md:gap-8'}`}>
-              {/* Left Column - Order Details */}
-              <div className={`${isMobile ? '' : 'lg:col-span-2 space-y-6'}`}>
-                <AnimatePresence mode="wait">
-                  {activeStep === 'details' && (
+                        {/* Delivery Information */}
+                        <div className="bg-white dark:bg-gray-800 rounded-xl p-4 border border-gray-200 dark:border-gray-700 shadow-sm">
+                          <div className="flex items-center gap-3 mb-4">
+                            <div className="p-2 rounded-lg bg-emerald-50 dark:bg-emerald-900/30">
+                              <TruckIcon className="w-5 h-5 text-emerald-600 dark:text-emerald-400" />
+                            </div>
+                            <h3 className="font-bold text-gray-900 dark:text-white">Delivery Details</h3>
+                          </div>
+
+                          <div className="space-y-4">
+                            <Input
+                              label="Recipient Name"
+                              placeholder="Jane Smith"
+                              value={recipientName}
+                              onChange={(e) => setRecipientName(e.target.value)}
+                              isRequired
+                              disabled={loading}
+                              size="sm"
+                              classNames={{
+                                input: "text-sm py-3",
+                                label: "text-sm text-gray-700 dark:text-gray-300"
+                              }}
+                            />
+                            <Input
+                              type="tel"
+                              label="Recipient Phone"
+                              placeholder="07XXXXXXXX"
+                              value={recipientPhone}
+                              onChange={(e) => setRecipientPhone(e.target.value)}
+                              isRequired
+                              disabled={loading}
+                              startContent={<PhoneIcon className="w-4 h-4 text-gray-400" />}
+                              size="sm"
+                              classNames={{
+                                input: "text-sm py-3",
+                                label: "text-sm text-gray-700 dark:text-gray-300"
+                              }}
+                            />
+                            <Input
+                              label="Delivery Address"
+                              placeholder="Building, Street, Floor, Landmarks"
+                              value={deliveryAddress}
+                              onChange={(e) => setDeliveryAddress(e.target.value)}
+                              isRequired
+                              disabled={loading}
+                              size="sm"
+                              classNames={{
+                                input: "text-sm py-3",
+                                label: "text-sm text-gray-700 dark:text-gray-300"
+                              }}
+                              startContent={<MapPinIcon className="w-4 h-4 text-gray-400" />}
+                            />
+                          </div>
+                        </div>
+
+                        {/* Order Summary Preview for Mobile */}
+                        <Card className="border border-gray-200 dark:border-gray-700">
+                          <CardBody className="p-4">
+                            <h3 className="font-bold text-gray-900 dark:text-white mb-3">Order Summary</h3>
+                            <div className="space-y-2">
+                              <div className="flex justify-between items-center">
+                                <span className="text-sm text-gray-600 dark:text-gray-400">Subtotal</span>
+                                <span className="font-medium text-sm text-gray-900 dark:text-white">
+                                  KES {subtotal.toLocaleString()}
+                                </span>
+                              </div>
+                              <div className="flex justify-between items-center">
+                                <span className="text-sm text-gray-600 dark:text-gray-400">VAT (16%)</span>
+                                <span className="font-medium text-sm text-gray-900 dark:text-white">
+                                  KES {vat.toLocaleString()}
+                                </span>
+                              </div>
+                              {deliveryFee > 0 && (
+                                <div className="flex justify-between items-center">
+                                  <span className="text-sm text-gray-600 dark:text-gray-400">Delivery</span>
+                                  <span className="font-medium text-sm text-emerald-600 dark:text-emerald-400">
+                                    KES {deliveryFee.toLocaleString()}
+                                  </span>
+                                </div>
+                              )}
+                              <Divider className="my-2" />
+                              <div className="flex justify-between items-center pt-1">
+                                <span className="font-bold text-gray-900 dark:text-white">Total</span>
+                                <div className="text-right">
+                                  <div className="font-bold bg-gradient-to-r from-blue-600 to-cyan-600 bg-clip-text text-transparent text-lg">
+                                    KES {grandTotal.toLocaleString()}
+                                  </div>
+                                </div>
+                              </div>
+                            </div>
+                          </CardBody>
+                        </Card>
+                      </motion.div>
+                    )}
+
+                    {activeStep === 'review' && (
+                      <motion.div
+                        key="review"
+                        initial={{ opacity: 0, y: 10 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        exit={{ opacity: 0, y: -10 }}
+                        className="space-y-6"
+                      >
+                        {/* Order Summary Card */}
+                        <div className="bg-white dark:bg-gray-800 rounded-xl p-4 border border-gray-200 dark:border-gray-700 shadow-sm">
+                          <div className="flex items-center gap-3 mb-4">
+                            <div className="p-2 rounded-lg bg-amber-50 dark:bg-amber-900/30">
+                              <DocumentTextIcon className="w-5 h-5 text-amber-600 dark:text-amber-400" />
+                            </div>
+                            <h3 className="font-bold text-gray-900 dark:text-white">Order Summary</h3>
+                          </div>
+
+                          <div className="space-y-4">
+                            <div className="space-y-4">
+                              <div>
+                                <h4 className="font-semibold text-gray-900 dark:text-white mb-2 text-sm">Contact Information</h4>
+                                <div className="space-y-1 text-sm text-gray-600 dark:text-gray-400 bg-gray-50 dark:bg-gray-700/50 p-3 rounded-lg">
+                                  <p>{customerName}</p>
+                                  <p>{phoneNumber}</p>
+                                </div>
+                              </div>
+                              <div>
+                                <h4 className="font-semibold text-gray-900 dark:text-white mb-2 text-sm">Delivery Information</h4>
+                                <div className="space-y-1 text-sm text-gray-600 dark:text-gray-400 bg-gray-50 dark:bg-gray-700/50 p-3 rounded-lg">
+                                  <p>{recipientName}</p>
+                                  <p>{recipientPhone}</p>
+                                  <p className="line-clamp-2">{deliveryAddress}</p>
+                                </div>
+                              </div>
+                            </div>
+
+                            <Divider />
+
+                            <div>
+                              <h4 className="font-semibold text-gray-900 dark:text-white mb-3 text-sm">Items</h4>
+                              <div className="space-y-3 max-h-60 overflow-y-auto pr-2">
+                                {cartItems.map((item) => (
+                                  <div key={item.id} className="flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-700/50 rounded-lg">
+                                    <div className="flex-1 min-w-0">
+                                      <p className="font-medium text-gray-900 dark:text-white text-sm truncate">
+                                        {item.name}
+                                      </p>
+                                      <p className="text-xs text-gray-500 dark:text-gray-400">
+                                        {item.variant} × {item.quantity}
+                                      </p>
+                                    </div>
+                                    <p className="font-bold text-gray-900 dark:text-white text-sm ml-2">
+                                      KES {(item.price * item.quantity).toLocaleString()}
+                                    </p>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Payment Method */}
+                        <Card className="border border-gray-200 dark:border-gray-700">
+                          <CardBody className="p-4">
+                            <div className="flex items-center gap-3 mb-3">
+                              <div className="p-2 rounded-lg bg-green-100 dark:bg-green-900/30">
+                                <BanknotesIcon className="w-4 h-4 text-green-600 dark:text-green-400" />
+                              </div>
+                              <h3 className="font-bold text-gray-900 dark:text-white text-sm">Payment Method</h3>
+                            </div>
+                            <div className="flex items-center gap-3 p-3 bg-gradient-to-r from-green-50 to-emerald-50 dark:from-green-900/20 dark:to-emerald-900/20 rounded-lg border border-green-200 dark:border-green-800">
+                              <div className="rounded-lg bg-green-500 flex items-center justify-center w-8 h-8">
+                                <span className="text-white font-bold text-xs">M</span>
+                              </div>
+                              <div>
+                                <p className="font-semibold text-gray-900 dark:text-white text-sm">M-Pesa STK Push</p>
+                                <p className="text-gray-600 dark:text-gray-400 text-xs">Secure mobile payment</p>
+                              </div>
+                            </div>
+                          </CardBody>
+                        </Card>
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
+
+                  {/* Status Message */}
+                  {status && (
                     <motion.div
-                      key="details"
-                      initial={{ opacity: 0, x: -20 }}
-                      animate={{ opacity: 1, x: 0 }}
-                      exit={{ opacity: 0, x: 20 }}
-                      className="space-y-6 md:space-y-8"
+                      initial={{ opacity: 0, y: 10 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      className={`p-3 rounded-xl border ${status.type === 'success' ? 'bg-emerald-50 dark:bg-emerald-900/20 border-emerald-200 dark:border-emerald-800' :
+                        status.type === 'error' ? 'bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-800' :
+                          status.type === 'info' ? 'bg-blue-50 dark:bg-blue-900/20 border-blue-200 dark:border-blue-800' :
+                            'bg-amber-50 dark:bg-amber-900/20 border-amber-200 dark:border-amber-800'
+                        }`}
                     >
-                      {/* Customer Information */}
-                      <div className="bg-white dark:bg-gray-800 rounded-2xl p-4 md:p-6 border border-gray-200 dark:border-gray-700 shadow-lg">
-                        <div className="flex items-center gap-3 mb-4 md:mb-6">
-                          <div className="p-2 md:p-3 rounded-xl bg-blue-50 dark:bg-blue-900/30">
-                            <UserCircleIcon className="w-5 h-5 md:w-6 md:h-6 text-blue-600 dark:text-blue-400" />
-                          </div>
-                          <h3 className={`font-bold text-gray-900 dark:text-white ${isMobile ? 'text-lg' : 'text-xl'}`}>Primary Contact</h3>
+                      <div className="flex items-start gap-3">
+                        <div className={`mt-0.5 ${status.type === 'success' ? 'text-emerald-600 dark:text-emerald-400' :
+                          status.type === 'error' ? 'text-red-600 dark:text-red-400' :
+                            status.type === 'info' ? 'text-blue-600 dark:text-blue-400' :
+                              'text-amber-600 dark:text-amber-400'}`}>
+                          {status.type === 'success' ? <CheckCircleIcon className="w-4 h-4" /> :
+                            status.type === 'error' ? '❌' :
+                              status.type === 'info' ? <ClockIcon className="w-4 h-4" /> :
+                                '⚠️'}
                         </div>
-
-                        <div className={`${isMobile ? 'space-y-4' : 'grid md:grid-cols-2 gap-4'}`}>
-                          <Input
-                            placeholder="Enter Full Name"
-                            value={customerName}
-                            onChange={(e) => setCustomerName(e.target.value)}
-                            isRequired
-                            disabled={loading}
-                            size={isMobile ? "sm" : "md"}
-                            classNames={{
-                              input: isMobile ? "text-sm py-4" : "text-base py-6",
-                              label: "text-gray-700 dark:text-gray-300"
-                            }}
-                          />
-                          <Input
-                            type="tel"
-                            label="Phone Number"
-                            placeholder="07XXXXXXXX"
-                            value={phoneNumber}
-                            onChange={(e) => setPhoneNumber(e.target.value)}
-                            isRequired
-                            disabled={loading}
-                            description={!isMobile && "For M-Pesa payment confirmation"}
-                            startContent={<PhoneIcon className={`${isMobile ? 'w-4 h-4' : 'w-5 h-5'} text-gray-400`} />}
-                            size={isMobile ? "sm" : "md"}
-                          />
-                        </div>
-                      </div>
-
-                      {/* Delivery Information */}
-                      <div className="bg-white dark:bg-gray-800 rounded-2xl p-4 md:p-6 border border-gray-200 dark:border-gray-700 shadow-lg">
-                        <div className="flex items-center gap-3 mb-4 md:mb-6">
-                          <div className="p-2 md:p-3 rounded-xl bg-emerald-50 dark:bg-emerald-900/30">
-                            <TruckIcon className="w-5 h-5 md:w-6 md:h-6 text-emerald-600 dark:text-emerald-400" />
-                          </div>
-                          <h3 className={`font-bold text-gray-900 dark:text-white ${isMobile ? 'text-lg' : 'text-xl'}`}>Delivery Details</h3>
-                        </div>
-
-                        <div className={`${isMobile ? 'space-y-4' : 'grid md:grid-cols-2 gap-4'}`}>
-                          <Input
-                            label="Recipient Name"
-                            placeholder="Jane Smith"
-                            value={recipientName}
-                            onChange={(e) => setRecipientName(e.target.value)}
-                            isRequired
-                            disabled={loading}
-                            size={isMobile ? "sm" : "md"}
-                          />
-                          <Input
-                            type="tel"
-                            label="Recipient Phone"
-                            placeholder="07XXXXXXXX"
-                            value={recipientPhone}
-                            onChange={(e) => setRecipientPhone(e.target.value)}
-                            isRequired
-                            disabled={loading}
-                            startContent={<PhoneIcon className={`${isMobile ? 'w-4 h-4' : 'w-5 h-5'} text-gray-400`} />}
-                            size={isMobile ? "sm" : "md"}
-                          />
-                        </div>
-
-                        <div className="mt-4">
-                          <Input
-                            label="Delivery Address"
-                            placeholder="Building, Street, Floor, Landmarks"
-                            value={deliveryAddress}
-                            onChange={(e) => setDeliveryAddress(e.target.value)}
-                            isRequired
-                            disabled={loading}
-                            size={isMobile ? "sm" : "md"}
-                            classNames={{
-                              input: isMobile ? "text-sm" : "text-base",
-                              label: "text-gray-700 dark:text-gray-300"
-                            }}
-                            startContent={<MapPinIcon className={`${isMobile ? 'w-4 h-4' : 'w-5 h-5'} text-gray-400`} />}
-                          />
+                        <div className="flex-1">
+                          <p className="text-gray-700 dark:text-gray-300 text-sm">
+                            {status.message}
+                          </p>
+                          {saleId && (
+                            <p className="font-mono text-gray-500 dark:text-gray-400 mt-1 text-xs">
+                              Order ID: {saleId}
+                            </p>
+                          )}
                         </div>
                       </div>
                     </motion.div>
+                  )}
+                </div>
+              </ModalBody>
+
+              {/* Mobile Footer - Fixed at bottom */}
+              <ModalFooter className={`sticky bottom-0 border-t border-gray-200 dark:border-gray-700 bg-gradient-to-b from-white to-gray-50 dark:from-gray-900 dark:to-gray-800 p-4 ${keyboardVisible ? 'pb-8' : ''}`}>
+                <div className="flex flex-col gap-3 w-full">
+                  {activeStep === 'details' && (
+                    <Button
+                      color="primary"
+                      onPress={() => setActiveStep('review')}
+                      isDisabled={!isFormValid()}
+                      size="lg"
+                      className="w-full bg-gradient-to-r from-blue-600 to-cyan-600 text-white font-semibold py-3"
+                    >
+                      Continue to Review
+                    </Button>
                   )}
 
                   {activeStep === 'review' && (
-                    <motion.div
-                      key="review"
-                      initial={{ opacity: 0, x: -20 }}
-                      animate={{ opacity: 1, x: 0 }}
-                      exit={{ opacity: 0, x: 20 }}
-                      className="space-y-6 md:space-y-8"
-                    >
-                      {/* Order Summary Card */}
-                      <div className="bg-white dark:bg-gray-800 rounded-2xl p-4 md:p-6 border border-gray-200 dark:border-gray-700 shadow-lg">
-                        <div className="flex items-center gap-3 mb-4 md:mb-6">
-                          <div className="p-2 md:p-3 rounded-xl bg-amber-50 dark:bg-amber-900/30">
-                            <DocumentTextIcon className="w-5 h-5 md:w-6 md:h-6 text-amber-600 dark:text-amber-400" />
-                          </div>
-                          <h3 className={`font-bold text-gray-900 dark:text-white ${isMobile ? 'text-lg' : 'text-xl'}`}>Order Summary</h3>
-                        </div>
-
-                        <div className="space-y-4">
-                          <div className={`${isMobile ? 'space-y-4' : 'grid grid-cols-2 gap-4'}`}>
-                            <div>
-                              <h4 className="font-semibold text-gray-900 dark:text-white mb-2 text-sm md:text-base">Contact Information</h4>
-                              <div className="space-y-1 text-xs md:text-sm text-gray-600 dark:text-gray-400">
-                                <p>{customerName}</p>
-                                <p>{phoneNumber}</p>
-                              </div>
-                            </div>
-                            <div>
-                              <h4 className="font-semibold text-gray-900 dark:text-white mb-2 text-sm md:text-base">Delivery Information</h4>
-                              <div className="space-y-1 text-xs md:text-sm text-gray-600 dark:text-gray-400">
-                                <p>{recipientName}</p>
-                                <p>{recipientPhone}</p>
-                                <p className="line-clamp-2">{deliveryAddress}</p>
-                              </div>
-                            </div>
-                          </div>
-
-                          <Divider />
-
-                          <div>
-                            <h4 className="font-semibold text-gray-900 dark:text-white mb-3 text-sm md:text-base">Items</h4>
-                            <div className="space-y-3 max-h-40 md:max-h-60 overflow-y-auto pr-2">
-                              {cartItems.map((item) => (
-                                <div key={item.id} className="flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-700/50 rounded-lg">
-                                  <div className="flex-1 min-w-0">
-                                    <p className="font-medium text-gray-900 dark:text-white text-sm md:text-base truncate">
-                                      {item.name}
-                                    </p>
-                                    <p className="text-xs text-gray-500 dark:text-gray-400">
-                                      {item.variant} × {item.quantity}
-                                    </p>
-                                  </div>
-                                  <p className="font-bold text-gray-900 dark:text-white text-sm md:text-base ml-2">
-                                    KES {(item.price * item.quantity).toLocaleString()}
-                                  </p>
-                                </div>
-                              ))}
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                    </motion.div>
+                    <>
+                      <Button
+                        color="primary"
+                        onPress={handleSubmit}
+                        isLoading={loading}
+                        isDisabled={!isFormValid()}
+                        size="lg"
+                        className="w-full bg-gradient-to-r from-blue-600 to-cyan-600 text-white font-semibold py-3"
+                      >
+                        {loading ? "Processing..." : "Place Order & Pay"}
+                      </Button>
+                      <Button
+                        variant="light"
+                        onPress={() => setActiveStep('details')}
+                        isDisabled={loading}
+                        size="sm"
+                        className="w-full text-gray-700 dark:text-gray-300"
+                        startContent={<ArrowPathIcon className="w-4 h-4" />}
+                      >
+                        Edit Details
+                      </Button>
+                    </>
                   )}
-                </AnimatePresence>
-              </div>
-
-              {/* Right Column - Order Summary & Payment */}
-              <div className="space-y-6">
-                {/* Order Summary Card */}
-                <Card className="border border-gray-200 dark:border-gray-700 shadow-lg">
-                  <CardBody className="p-4 md:p-6">
-                    <h3 className={`font-bold text-gray-900 dark:text-white mb-3 md:mb-4 ${isMobile ? 'text-base' : 'text-lg'}`}>
-                      {isMobile ? 'Order Summary' : 'Procurement Summary'}
-                    </h3>
-
-                    <div className="space-y-2 md:space-y-3">
-                      <div className="flex justify-between items-center">
-                        <span className="text-gray-600 dark:text-gray-400 text-sm md:text-base">Subtotal</span>
-                        <span className="font-medium text-gray-900 dark:text-white text-sm md:text-base">
-                          KES {subtotal.toLocaleString()}
-                        </span>
-                      </div>
-
-                      <div className="flex justify-between items-center">
-                        <span className="text-gray-600 dark:text-gray-400 text-sm md:text-base">VAT (16%)</span>
-                        <span className="font-medium text-gray-900 dark:text-white text-sm md:text-base">
-                          KES {vat.toLocaleString()}
-                        </span>
-                      </div>
-
-                      {deliveryFee > 0 && (
-                        <div className="flex justify-between items-center">
-                          <span className="text-gray-600 dark:text-gray-400 text-sm md:text-base">Delivery</span>
-                          <span className="font-medium text-emerald-600 dark:text-emerald-400 text-sm md:text-base">
-                            KES {deliveryFee.toLocaleString()}
-                          </span>
-                        </div>
-                      )}
-
-                      <Divider className="my-2 md:my-3" />
-
-                      <div className="flex justify-between items-center pt-1 md:pt-2">
-                        <span className={`font-bold text-gray-900 dark:text-white ${isMobile ? 'text-base' : 'text-lg'}`}>Total</span>
-                        <div className="text-right">
-                          <div className={`font-bold bg-gradient-to-r from-blue-600 to-cyan-600 bg-clip-text text-transparent ${isMobile ? 'text-xl' : 'text-2xl'}`}>
-                            KES {grandTotal.toLocaleString()}
-                          </div>
-                          <div className="text-xs text-gray-500 dark:text-gray-400">Inclusive of all taxes</div>
-                        </div>
+                </div>
+              </ModalFooter>
+            </>
+          ) : (
+            // Desktop/Tablet Layout (Original with improvements)
+            <>
+              <ModalHeader className="pt-6 pb-4 md:pt-8 md:pb-6 px-4 md:px-6">
+                <div className="flex items-center justify-between w-full">
+                  <div className="flex items-center gap-3">
+                    <div className={`rounded-2xl bg-gradient-to-br from-blue-600 to-cyan-600 p-0.5 ${isMobile ? 'w-12 h-12' : 'w-16 h-16'}`}>
+                      <div className="w-full h-full rounded-xl bg-white dark:bg-gray-900 flex items-center justify-center">
+                        <CreditCardIcon className={`${isMobile ? 'w-6 h-6' : 'w-8 h-8'} text-blue-600 dark:text-blue-400`} />
                       </div>
                     </div>
-                  </CardBody>
-                </Card>
-
-                {/* Payment Method Card */}
-                <Card className="border border-gray-200 dark:border-gray-700 shadow-lg">
-                  <CardBody className="p-4 md:p-6">
-                    <div className="flex items-center gap-3 mb-3 md:mb-4">
-                      <div className={`rounded-lg bg-green-100 dark:bg-green-900/30 ${isMobile ? 'p-1.5' : 'p-2'}`}>
-                        <BanknotesIcon className={`${isMobile ? 'w-4 h-4' : 'w-5 h-5'} text-green-600 dark:text-green-400`} />
-                      </div>
-                      <h3 className={`font-bold text-gray-900 dark:text-white ${isMobile ? 'text-sm' : 'text-base'}`}>Payment Method</h3>
+                    <div>
+                      <h2 className={`font-bold bg-gradient-to-r from-blue-600 to-cyan-600 bg-clip-text text-transparent ${isMobile ? 'text-xl' : 'text-2xl md:text-3xl'}`}>
+                        {isMobile ? 'Checkout' : 'Enterprise Procurement'}
+                      </h2>
+                      <p className={`text-gray-600 dark:text-gray-400 ${isMobile ? 'text-xs' : 'text-sm'}`}>
+                        {isMobile ? 'Complete your order' : 'Complete your corporate order with secure payment'}
+                      </p>
                     </div>
-
-                    <div className="space-y-3">
-                      <div className="flex items-center gap-3 p-3 bg-gradient-to-r from-green-50 to-emerald-50 dark:from-green-900/20 dark:to-emerald-900/20 rounded-lg border border-green-200 dark:border-green-800">
-                        <div className={`rounded-lg bg-green-500 flex items-center justify-center ${isMobile ? 'w-8 h-8' : 'w-10 h-10'}`}>
-                          <span className="text-white font-bold text-xs md:text-sm">M</span>
-                        </div>
-                        <div>
-                          <p className={`font-semibold text-gray-900 dark:text-white ${isMobile ? 'text-sm' : 'text-base'}`}>M-Pesa STK Push</p>
-                          <p className={`text-gray-600 dark:text-gray-400 ${isMobile ? 'text-xs' : 'text-sm'}`}>Secure mobile payment</p>
-                        </div>
-                      </div>
-
-                      <div className="flex items-center gap-2 text-xs md:text-sm text-gray-500 dark:text-gray-400">
-                        <ShieldCheckIcon className={`${isMobile ? 'w-3 h-3' : 'w-4 h-4'}`} />
-                        <span>256-bit encrypted transaction</span>
-                      </div>
-                    </div>
-                  </CardBody>
-                </Card>
-
-                {/* Security Features */}
-                <div className={`grid ${isMobile ? 'grid-cols-2' : 'grid-cols-2'} gap-2 md:gap-3`}>
-                  <div className="flex items-center gap-2 p-2 md:p-3 bg-gray-50 dark:bg-gray-700/50 rounded-xl">
-                    <LockClosedIcon className={`${isMobile ? 'w-3 h-3' : 'w-4 h-4'} text-blue-500`} />
-                    <span className={`font-medium text-gray-700 dark:text-gray-300 ${isMobile ? 'text-xs' : 'text-sm'}`}>PCI DSS Compliant</span>
                   </div>
-                  <div className="flex items-center gap-2 p-2 md:p-3 bg-gray-50 dark:bg-gray-700/50 rounded-xl">
-                    <ChartBarIcon className={`${isMobile ? 'w-3 h-3' : 'w-4 h-4'} text-emerald-500`} />
-                    <span className={`font-medium text-gray-700 dark:text-gray-300 ${isMobile ? 'text-xs' : 'text-sm'}`}>Real-time Tracking</span>
+
+                  {!isMobile && (
+                    <Badge
+                      color="primary"
+                      variant="flat"
+                      className="bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400"
+                    >
+                      {cartItems.length} Items
+                    </Badge>
+                  )}
+                </div>
+              </ModalHeader>
+
+              <ModalBody className="pb-0 px-4 md:px-6 overflow-y-auto">
+                <div ref={contentWrapperRef}>
+                  {renderStepIndicator()}
+
+                  <div className={`${isMobile ? 'space-y-6' : 'grid lg:grid-cols-3 gap-6 md:gap-8'}`}>
+                    {/* Left Column - Order Details */}
+                    <div className={`${isMobile ? '' : 'lg:col-span-2 space-y-6'}`}>
+                      <AnimatePresence mode="wait">
+                        {activeStep === 'details' && (
+                          <motion.div
+                            key="details"
+                            initial={{ opacity: 0, x: -20 }}
+                            animate={{ opacity: 1, x: 0 }}
+                            exit={{ opacity: 0, x: 20 }}
+                            className="space-y-6 md:space-y-8"
+                          >
+                            {/* Customer Information */}
+                            <div className="bg-white dark:bg-gray-800 rounded-2xl p-4 md:p-6 border border-gray-200 dark:border-gray-700 shadow-lg">
+                              <div className="flex items-center gap-3 mb-4 md:mb-6">
+                                <div className="p-2 md:p-3 rounded-xl bg-blue-50 dark:bg-blue-900/30">
+                                  <UserCircleIcon className="w-5 h-5 md:w-6 md:h-6 text-blue-600 dark:text-blue-400" />
+                                </div>
+                                <h3 className={`font-bold text-gray-900 dark:text-white ${isMobile ? 'text-lg' : 'text-xl'}`}>Primary Contact</h3>
+                              </div>
+
+                              <div className={`${isMobile ? 'space-y-4' : 'grid md:grid-cols-2 gap-4'}`}>
+                                <Input
+                                  label="Full Name"
+                                  placeholder="John Doe"
+                                  value={customerName}
+                                  onChange={(e) => setCustomerName(e.target.value)}
+                                  isRequired
+                                  disabled={loading}
+                                  size={isMobile ? "sm" : "md"}
+                                  classNames={{
+                                    input: isMobile ? "text-sm py-4" : "text-base py-6",
+                                    label: "text-gray-700 dark:text-gray-300"
+                                  }}
+                                />
+                                <Input
+                                  type="tel"
+                                  label="Phone Number"
+                                  placeholder="07XXXXXXXX"
+                                  value={phoneNumber}
+                                  onChange={(e) => setPhoneNumber(e.target.value)}
+                                  isRequired
+                                  disabled={loading}
+                                  description={!isMobile && "For M-Pesa payment confirmation"}
+                                  startContent={<PhoneIcon className={`${isMobile ? 'w-4 h-4' : 'w-5 h-5'} text-gray-400`} />}
+                                  size={isMobile ? "sm" : "md"}
+                                />
+                              </div>
+                            </div>
+
+                            {/* Delivery Information */}
+                            <div className="bg-white dark:bg-gray-800 rounded-2xl p-4 md:p-6 border border-gray-200 dark:border-gray-700 shadow-lg">
+                              <div className="flex items-center gap-3 mb-4 md:mb-6">
+                                <div className="p-2 md:p-3 rounded-xl bg-emerald-50 dark:bg-emerald-900/30">
+                                  <TruckIcon className="w-5 h-5 md:w-6 md:h-6 text-emerald-600 dark:text-emerald-400" />
+                                </div>
+                                <h3 className={`font-bold text-gray-900 dark:text-white ${isMobile ? 'text-lg' : 'text-xl'}`}>Delivery Details</h3>
+                              </div>
+
+                              <div className={`${isMobile ? 'space-y-4' : 'grid md:grid-cols-2 gap-4'}`}>
+                                <Input
+                                  label="Recipient Name"
+                                  placeholder="Jane Smith"
+                                  value={recipientName}
+                                  onChange={(e) => setRecipientName(e.target.value)}
+                                  isRequired
+                                  disabled={loading}
+                                  size={isMobile ? "sm" : "md"}
+                                />
+                                <Input
+                                  type="tel"
+                                  label="Recipient Phone"
+                                  placeholder="07XXXXXXXX"
+                                  value={recipientPhone}
+                                  onChange={(e) => setRecipientPhone(e.target.value)}
+                                  isRequired
+                                  disabled={loading}
+                                  startContent={<PhoneIcon className={`${isMobile ? 'w-4 h-4' : 'w-5 h-5'} text-gray-400`} />}
+                                  size={isMobile ? "sm" : "md"}
+                                />
+                              </div>
+
+                              <div className="mt-4">
+                                <Input
+                                  label="Delivery Address"
+                                  placeholder="Building, Street, Floor, Landmarks"
+                                  value={deliveryAddress}
+                                  onChange={(e) => setDeliveryAddress(e.target.value)}
+                                  isRequired
+                                  disabled={loading}
+                                  size={isMobile ? "sm" : "md"}
+                                  classNames={{
+                                    input: isMobile ? "text-sm" : "text-base",
+                                    label: "text-gray-700 dark:text-gray-300"
+                                  }}
+                                  startContent={<MapPinIcon className={`${isMobile ? 'w-4 h-4' : 'w-5 h-5'} text-gray-400`} />}
+                                />
+                              </div>
+                            </div>
+                          </motion.div>
+                        )}
+
+                        {activeStep === 'review' && (
+                          <motion.div
+                            key="review"
+                            initial={{ opacity: 0, x: -20 }}
+                            animate={{ opacity: 1, x: 0 }}
+                            exit={{ opacity: 0, x: 20 }}
+                            className="space-y-6 md:space-y-8"
+                          >
+                            {/* Order Summary Card */}
+                            <div className="bg-white dark:bg-gray-800 rounded-2xl p-4 md:p-6 border border-gray-200 dark:border-gray-700 shadow-lg">
+                              <div className="flex items-center gap-3 mb-4 md:mb-6">
+                                <div className="p-2 md:p-3 rounded-xl bg-amber-50 dark:bg-amber-900/30">
+                                  <DocumentTextIcon className="w-5 h-5 md:w-6 md:h-6 text-amber-600 dark:text-amber-400" />
+                                </div>
+                                <h3 className={`font-bold text-gray-900 dark:text-white ${isMobile ? 'text-lg' : 'text-xl'}`}>Order Summary</h3>
+                              </div>
+
+                              <div className="space-y-4">
+                                <div className={`${isMobile ? 'space-y-4' : 'grid grid-cols-2 gap-4'}`}>
+                                  <div>
+                                    <h4 className="font-semibold text-gray-900 dark:text-white mb-2 text-sm md:text-base">Contact Information</h4>
+                                    <div className="space-y-1 text-xs md:text-sm text-gray-600 dark:text-gray-400">
+                                      <p>{customerName}</p>
+                                      <p>{phoneNumber}</p>
+                                    </div>
+                                  </div>
+                                  <div>
+                                    <h4 className="font-semibold text-gray-900 dark:text-white mb-2 text-sm md:text-base">Delivery Information</h4>
+                                    <div className="space-y-1 text-xs md:text-sm text-gray-600 dark:text-gray-400">
+                                      <p>{recipientName}</p>
+                                      <p>{recipientPhone}</p>
+                                      <p className="line-clamp-2">{deliveryAddress}</p>
+                                    </div>
+                                  </div>
+                                </div>
+
+                                <Divider />
+
+                                <div>
+                                  <h4 className="font-semibold text-gray-900 dark:text-white mb-3 text-sm md:text-base">Items</h4>
+                                  <div className="space-y-3 max-h-40 md:max-h-60 overflow-y-auto pr-2">
+                                    {cartItems.map((item) => (
+                                      <div key={item.id} className="flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-700/50 rounded-lg">
+                                        <div className="flex-1 min-w-0">
+                                          <p className="font-medium text-gray-900 dark:text-white text-sm md:text-base truncate">
+                                            {item.name}
+                                          </p>
+                                          <p className="text-xs text-gray-500 dark:text-gray-400">
+                                            {item.variant} × {item.quantity}
+                                          </p>
+                                        </div>
+                                        <p className="font-bold text-gray-900 dark:text-white text-sm md:text-base ml-2">
+                                          KES {(item.price * item.quantity).toLocaleString()}
+                                        </p>
+                                      </div>
+                                    ))}
+                                  </div>
+                                </div>
+                              </div>
+                            </div>
+                          </motion.div>
+                        )}
+                      </AnimatePresence>
+                    </div>
+
+                    {/* Right Column - Order Summary & Payment */}
+                    <div className="space-y-6">
+                      {/* Order Summary Card */}
+                      <Card className="border border-gray-200 dark:border-gray-700 shadow-lg">
+                        <CardBody className="p-4 md:p-6">
+                          <h3 className={`font-bold text-gray-900 dark:text-white mb-3 md:mb-4 ${isMobile ? 'text-base' : 'text-lg'}`}>
+                            {isMobile ? 'Order Summary' : 'Procurement Summary'}
+                          </h3>
+
+                          <div className="space-y-2 md:space-y-3">
+                            <div className="flex justify-between items-center">
+                              <span className="text-gray-600 dark:text-gray-400 text-sm md:text-base">Subtotal</span>
+                              <span className="font-medium text-gray-900 dark:text-white text-sm md:text-base">
+                                KES {subtotal.toLocaleString()}
+                              </span>
+                            </div>
+
+                            <div className="flex justify-between items-center">
+                              <span className="text-gray-600 dark:text-gray-400 text-sm md:text-base">VAT (16%)</span>
+                              <span className="font-medium text-gray-900 dark:text-white text-sm md:text-base">
+                                KES {vat.toLocaleString()}
+                              </span>
+                            </div>
+
+                            {deliveryFee > 0 && (
+                              <div className="flex justify-between items-center">
+                                <span className="text-gray-600 dark:text-gray-400 text-sm md:text-base">Delivery</span>
+                                <span className="font-medium text-emerald-600 dark:text-emerald-400 text-sm md:text-base">
+                                  KES {deliveryFee.toLocaleString()}
+                                </span>
+                              </div>
+                            )}
+
+                            <Divider className="my-2 md:my-3" />
+
+                            <div className="flex justify-between items-center pt-1 md:pt-2">
+                              <span className={`font-bold text-gray-900 dark:text-white ${isMobile ? 'text-base' : 'text-lg'}`}>Total</span>
+                              <div className="text-right">
+                                <div className={`font-bold bg-gradient-to-r from-blue-600 to-cyan-600 bg-clip-text text-transparent ${isMobile ? 'text-xl' : 'text-2xl'}`}>
+                                  KES {grandTotal.toLocaleString()}
+                                </div>
+                                <div className="text-xs text-gray-500 dark:text-gray-400">Inclusive of all taxes</div>
+                              </div>
+                            </div>
+                          </div>
+                        </CardBody>
+                      </Card>
+
+                      {/* Payment Method Card */}
+                      <Card className="border border-gray-200 dark:border-gray-700 shadow-lg">
+                        <CardBody className="p-4 md:p-6">
+                          <div className="flex items-center gap-3 mb-3 md:mb-4">
+                            <div className={`rounded-lg bg-green-100 dark:bg-green-900/30 ${isMobile ? 'p-1.5' : 'p-2'}`}>
+                              <BanknotesIcon className={`${isMobile ? 'w-4 h-4' : 'w-5 h-5'} text-green-600 dark:text-green-400`} />
+                            </div>
+                            <h3 className={`font-bold text-gray-900 dark:text-white ${isMobile ? 'text-sm' : 'text-base'}`}>Payment Method</h3>
+                          </div>
+
+                          <div className="space-y-3">
+                            <div className="flex items-center gap-3 p-3 bg-gradient-to-r from-green-50 to-emerald-50 dark:from-green-900/20 dark:to-emerald-900/20 rounded-lg border border-green-200 dark:border-green-800">
+                              <div className={`rounded-lg bg-green-500 flex items-center justify-center ${isMobile ? 'w-8 h-8' : 'w-10 h-10'}`}>
+                                <span className="text-white font-bold text-xs md:text-sm">M</span>
+                              </div>
+                              <div>
+                                <p className={`font-semibold text-gray-900 dark:text-white ${isMobile ? 'text-sm' : 'text-base'}`}>M-Pesa STK Push</p>
+                                <p className={`text-gray-600 dark:text-gray-400 ${isMobile ? 'text-xs' : 'text-sm'}`}>Secure mobile payment</p>
+                              </div>
+                            </div>
+
+                            <div className="flex items-center gap-2 text-xs md:text-sm text-gray-500 dark:text-gray-400">
+                              <ShieldCheckIcon className={`${isMobile ? 'w-3 h-3' : 'w-4 h-4'}`} />
+                              <span>256-bit encrypted transaction</span>
+                            </div>
+                          </div>
+                        </CardBody>
+                      </Card>
+
+                      {/* Security Features */}
+                      <div className={`grid ${isMobile ? 'grid-cols-2' : 'grid-cols-2'} gap-2 md:gap-3`}>
+                        <div className="flex items-center gap-2 p-2 md:p-3 bg-gray-50 dark:bg-gray-700/50 rounded-xl">
+                          <LockClosedIcon className={`${isMobile ? 'w-3 h-3' : 'w-4 h-4'} text-blue-500`} />
+                          <span className={`font-medium text-gray-700 dark:text-gray-300 ${isMobile ? 'text-xs' : 'text-sm'}`}>PCI DSS Compliant</span>
+                        </div>
+                        <div className="flex items-center gap-2 p-2 md:p-3 bg-gray-50 dark:bg-gray-700/50 rounded-xl">
+                          <ChartBarIcon className={`${isMobile ? 'w-3 h-3' : 'w-4 h-4'} text-emerald-500`} />
+                          <span className={`font-medium text-gray-700 dark:text-gray-300 ${isMobile ? 'text-xs' : 'text-sm'}`}>Real-time Tracking</span>
+                        </div>
+                      </div>
+
+                      {/* Status Message */}
+                      {status && (
+                        <motion.div
+                          initial={{ opacity: 0, y: 10 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          className={`p-3 md:p-4 rounded-xl border ${status.type === 'success' ? 'bg-emerald-50 dark:bg-emerald-900/20 border-emerald-200 dark:border-emerald-800' :
+                            status.type === 'error' ? 'bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-800' :
+                              status.type === 'info' ? 'bg-blue-50 dark:bg-blue-900/20 border-blue-200 dark:border-blue-800' :
+                                'bg-amber-50 dark:bg-amber-900/20 border-amber-200 dark:border-amber-800'
+                            }`}
+                        >
+                          <div className="flex items-start gap-3">
+                            <div className={`mt-0.5 ${status.type === 'success' ? 'text-emerald-600 dark:text-emerald-400' :
+                              status.type === 'error' ? 'text-red-600 dark:text-red-400' :
+                                status.type === 'info' ? 'text-blue-600 dark:text-blue-400' :
+                                  'text-amber-600 dark:text-amber-400'}`}>
+                              {status.type === 'success' ? <CheckCircleIcon className={`${isMobile ? 'w-4 h-4' : 'w-5 h-5'}`} /> :
+                                status.type === 'error' ? '❌' :
+                                  status.type === 'info' ? <ClockIcon className={`${isMobile ? 'w-4 h-4' : 'w-5 h-5'}`} /> :
+                                    '⚠️'}
+                            </div>
+                            <div className="flex-1">
+                              <p className={`text-gray-700 dark:text-gray-300 ${isMobile ? 'text-xs' : 'text-sm'}`}>
+                                {status.message}
+                              </p>
+                              {saleId && (
+                                <p className={`font-mono text-gray-500 dark:text-gray-400 mt-1 md:mt-2 ${isMobile ? 'text-xs' : 'text-sm'}`}>
+                                  Order ID: {saleId}
+                                </p>
+                              )}
+                            </div>
+                          </div>
+                        </motion.div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              </ModalBody>
+
+              <ModalFooter className={`pt-4 pb-6 md:pt-6 md:pb-8 border-t border-gray-200 dark:border-gray-700 px-4 md:px-6 ${isMobile ? 'sticky bottom-0 bg-gradient-to-b from-white to-gray-50 dark:from-gray-900 dark:to-gray-800' : ''}`}>
+                <div className={`flex items-center justify-between w-full ${isMobile ? 'flex-col gap-4' : ''}`}>
+                  <div className={`flex gap-2 md:gap-3 ${isMobile ? 'w-full justify-between' : ''}`}>
+                    <Button
+                      variant="bordered"
+                      onPress={handleModalClose}
+                      isDisabled={loading}
+                      size={isMobile ? "sm" : "md"}
+                      className={`border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 ${isMobile ? 'flex-1 text-sm' : ''}`}
+                    >
+                      Cancel
+                    </Button>
+
+                    {activeStep === 'review' && !isMobile && (
+                      <Button
+                        variant="light"
+                        onPress={() => setActiveStep('details')}
+                        isDisabled={loading}
+                        size={isMobile ? "sm" : "md"}
+                        className="text-gray-700 dark:text-gray-300"
+                        startContent={<ArrowPathIcon className="w-4 h-4" />}
+                      >
+                        Edit Details
+                      </Button>
+                    )}
+                  </div>
+
+                  <div className={`flex gap-2 md:gap-3 ${isMobile ? 'w-full mt-2' : ''}`}>
+                    {activeStep === 'details' && (
+                      <Button
+                        color="primary"
+                        variant="bordered"
+                        onPress={() => setActiveStep('review')}
+                        isDisabled={!isFormValid()}
+                        size={isMobile ? "sm" : "md"}
+                        className={`border-blue-600 text-blue-600 dark:text-blue-400 ${isMobile ? 'flex-1 w-full text-sm' : ''}`}
+                      >
+                        {isMobile ? 'Continue' : 'Review Order'}
+                      </Button>
+                    )}
+
+                    {activeStep === 'review' && (
+                      <Button
+                        color="primary"
+                        onPress={handleSubmit}
+                        isLoading={loading}
+                        isDisabled={!isFormValid()}
+                        size={isMobile ? "sm" : "md"}
+                        className={`bg-gradient-to-r from-blue-600 to-cyan-600 text-white font-semibold hover:shadow-xl transition-all duration-300 ${isMobile
+                          ? 'flex-1 w-full text-sm py-3'
+                          : 'min-w-[180px] md:min-w-[240px] py-6'
+                          }`}
+                        startContent={!loading && <CreditCardIcon className={`${isMobile ? 'w-4 h-4' : 'w-5 h-5'}`} />}
+                      >
+                        {loading ? (
+                          <span>{isMobile ? "Processing..." : "Processing..."}</span>
+                        ) : (
+                          <span>{isMobile ? "Place Order" : "Place Order & Pay"}</span>
+                        )}
+                      </Button>
+                    )}
                   </div>
                 </div>
 
-                {/* Status Message */}
-                {status && (
-                  <motion.div
-                    initial={{ opacity: 0, y: 10 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    className={`p-3 md:p-4 rounded-xl border ${status.type === 'success' ? 'bg-emerald-50 dark:bg-emerald-900/20 border-emerald-200 dark:border-emerald-800' :
-                      status.type === 'error' ? 'bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-800' :
-                        status.type === 'info' ? 'bg-blue-50 dark:bg-blue-900/20 border-blue-200 dark:border-blue-800' :
-                          'bg-amber-50 dark:bg-amber-900/20 border-amber-200 dark:border-amber-800'
-                      }`}
-                  >
-                    <div className="flex items-start gap-3">
-                      <div className={`mt-0.5 ${status.type === 'success' ? 'text-emerald-600 dark:text-emerald-400' :
-                        status.type === 'error' ? 'text-red-600 dark:text-red-400' :
-                          status.type === 'info' ? 'text-blue-600 dark:text-blue-400' :
-                            'text-amber-600 dark:text-amber-400'}`}>
-                        {status.type === 'success' ? <CheckCircleIcon className={`${isMobile ? 'w-4 h-4' : 'w-5 h-5'}`} /> :
-                          status.type === 'error' ? '❌' :
-                            status.type === 'info' ? <ClockIcon className={`${isMobile ? 'w-4 h-4' : 'w-5 h-5'}`} /> :
-                              '⚠️'}
-                      </div>
-                      <div className="flex-1">
-                        <p className={`text-gray-700 dark:text-gray-300 ${isMobile ? 'text-xs' : 'text-sm'}`}>
-                          {status.message}
-                        </p>
-                        {saleId && (
-                          <p className={`font-mono text-gray-500 dark:text-gray-400 mt-1 md:mt-2 ${isMobile ? 'text-xs' : 'text-sm'}`}>
-                            Order ID: {saleId}
-                          </p>
-                        )}
-                      </div>
-                    </div>
-                  </motion.div>
+                {/* Mobile step navigation */}
+                {isMobile && activeStep === 'review' && (
+                  <div className="w-full mt-4">
+                    <Button
+                      variant="light"
+                      onPress={() => setActiveStep('details')}
+                      isDisabled={loading}
+                      size="sm"
+                      className="w-full text-gray-700 dark:text-gray-300 text-sm"
+                      startContent={<ArrowPathIcon className="w-4 h-4" />}
+                    >
+                      Edit Details
+                    </Button>
+                  </div>
                 )}
-              </div>
-            </div>
-          </ModalBody>
-
-          <ModalFooter className={`pt-4 pb-6 md:pt-6 md:pb-8 border-t border-gray-200 dark:border-gray-700 px-4 md:px-6 ${isMobile ? 'sticky bottom-0 bg-gradient-to-b from-white to-gray-50 dark:from-gray-900 dark:to-gray-800' : ''}`}>
-            <div className={`flex items-center justify-between w-full ${isMobile ? 'flex-col gap-4' : ''}`}>
-              <div className={`flex gap-2 md:gap-3 ${isMobile ? 'w-full justify-between' : ''}`}>
-                <Button
-                  variant="bordered"
-                  onPress={handleModalClose}
-                  isDisabled={loading}
-                  size={isMobile ? "sm" : "md"}
-                  className={`border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 ${isMobile ? 'flex-1 text-sm' : ''}`}
-                >
-                  Cancel
-                </Button>
-
-                {activeStep === 'review' && !isMobile && (
-                  <Button
-                    variant="light"
-                    onPress={() => setActiveStep('details')}
-                    isDisabled={loading}
-                    size={isMobile ? "sm" : "md"}
-                    className="text-gray-700 dark:text-gray-300"
-                    startContent={<ArrowPathIcon className="w-4 h-4" />}
-                  >
-                    Edit Details
-                  </Button>
-                )}
-              </div>
-
-              <div className={`flex gap-2 md:gap-3 ${isMobile ? 'w-full mt-2' : ''}`}>
-                {activeStep === 'details' && (
-                  <Button
-                    color="primary"
-                    variant="bordered"
-                    onPress={() => setActiveStep('review')}
-                    isDisabled={!isFormValid()}
-                    size={isMobile ? "sm" : "md"}
-                    className={`border-blue-600 text-blue-600 dark:text-blue-400 ${isMobile ? 'flex-1 w-full text-sm' : ''}`}
-                  >
-                    {isMobile ? 'Continue' : 'Review Order'}
-                  </Button>
-                )}
-
-                {activeStep === 'review' && (
-                  <Button
-                    color="primary"
-                    onPress={handleSubmit}
-                    isLoading={loading}
-                    isDisabled={!isFormValid()}
-                    size={isMobile ? "sm" : "md"}
-                    className={`bg-gradient-to-r from-blue-600 to-cyan-600 text-white font-semibold hover:shadow-xl transition-all duration-300 ${isMobile
-                      ? 'flex-1 w-full text-sm py-3'
-                      : 'min-w-[180px] md:min-w-[240px] py-6'
-                      }`}
-                    startContent={!loading && <CreditCardIcon className={`${isMobile ? 'w-4 h-4' : 'w-5 h-5'}`} />}
-                  >
-                    {loading ? (
-                      <span>{isMobile ? "Processing..." : "Processing..."}</span>
-                    ) : (
-                      <span>{isMobile ? "Place Order" : "Place Order & Pay"}</span>
-                    )}
-                  </Button>
-                )}
-              </div>
-            </div>
-
-            {/* Mobile step navigation */}
-            {isMobile && activeStep === 'review' && (
-              <div className="w-full mt-4">
-                <Button
-                  variant="light"
-                  onPress={() => setActiveStep('details')}
-                  isDisabled={loading}
-                  size="sm"
-                  className="w-full text-gray-700 dark:text-gray-300 text-sm"
-                  startContent={<ArrowPathIcon className="w-4 h-4" />}
-                >
-                  Edit Details
-                </Button>
-              </div>
-            )}
-          </ModalFooter>
+              </ModalFooter>
+            </>
+          )}
         </ModalContent>
       </Modal>
     </>
