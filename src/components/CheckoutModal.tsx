@@ -347,16 +347,16 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
         }
       }
 
-      const normalizedSaleId = normalizeSaleId(rawSaleId);
+      const id = normalizeSaleId(rawSaleId); // Use id variable name
 
-      if (!normalizedSaleId) {
+      if (!id) {
         throw new Error("Failed to get order ID from server");
       }
 
-      setSaleId(normalizedSaleId);
+      setSaleId(id);
 
       // Step 2: Check order status before initiating payment
-      const orderCheck = await checkExistingOrder(normalizedSaleId);
+      const orderCheck = await checkExistingOrder(id);
 
       if (orderCheck.exists && orderCheck.hasCompletedPayment) {
         // Order already has completed payment - clear cart immediately
@@ -364,14 +364,14 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
 
         // Show success toast
         showToast(
-          `Order ${normalizedSaleId} placed successfully! Your cart has been cleared.`,
+          `Order ${id} placed successfully! Your cart has been cleared.`,
           'success'
         );
 
         // Show success message in modal
         setStatus({
           type: 'success',
-          message: `Order ${normalizedSaleId} created successfully! Payment already completed.`
+          message: `Order ${id} created successfully! Payment already completed.`
         });
 
         // Close modal after 5 seconds
@@ -385,10 +385,10 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
 
       // Step 3: Initiate payment
       try {
-        console.log("Initiating payment via:", `${API_BASE_URL}/customer/orders/${normalizedSaleId}/pay`);
+        console.log("Initiating payment via:", `${API_BASE_URL}/customer/orders/${id}/pay`);
 
         const requestData = {
-          sale_id: normalizedSaleId,
+          sale_id: id,
           payment_method: "mpesa",
           phone_number: formatPhoneForMpesa(phoneNumber),
           amount: grandTotal
@@ -397,7 +397,7 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
         console.log("Payment request data:", requestData);
 
         const response = await axios.post(
-          `${API_BASE_URL}/customer/orders/${normalizedSaleId}/pay`,
+          `${API_BASE_URL}/customer/orders/${id}/pay`,  // Correct endpoint using id
           requestData,
           {
             headers: {
@@ -414,14 +414,14 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
 
         // Show success toast
         showToast(
-          `Order ${normalizedSaleId} created successfully! Input PIN to complete order.`,
+          `Order ${id} created successfully! Input PIN to complete order.`,
           'info'
         );
 
         // Show success message in modal
         setStatus({
           type: 'success',
-          message: `Order ${normalizedSaleId} created successfully! Input PIN to complete order.`
+          message: `Order ${id} created successfully! Input PIN to complete order.`
         });
 
         // Close modal after 5 seconds
@@ -439,14 +439,14 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
 
         // Show warning toast
         showToast(
-          `Order ${normalizedSaleId} created! Payment initiation may have issues. Please check your phone.`,
+          `Order ${id} created! Payment initiation may have issues. Please check your phone.`,
           'info'
         );
 
         // Show warning message in modal
         setStatus({
           type: 'warning',
-          message: `Order ${normalizedSaleId} created! Please check your phone for payment prompt. If not received, contact support.`
+          message: `Order ${id} created! Please check your phone for payment prompt. If not received, contact support.`
         });
 
         // Still close modal after 5 seconds
@@ -707,7 +707,6 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
                         <div className={`${isMobile ? 'space-y-4' : 'grid md:grid-cols-2 gap-4'}`}>
                           <Input
                             label={isMobile ? "Full Name" : "Customer Name"}
-                            placeholder="John Doe"
                             value={customerName}
                             onChange={(e) => setCustomerName(e.target.value)}
                             isRequired
