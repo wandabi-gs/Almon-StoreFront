@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
   Modal,
   ModalContent,
@@ -130,6 +130,7 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
   // Loading and status states
   const [loading, setLoading] = useState(false);
   const [status, setStatus] = useState<{ type: 'success' | 'error' | 'info' | 'warning', message: string } | null>(null);
+  const [countdown, setCountdown] = useState<number | null>(null);
 
   // Order and payment states
   const [saleId, setSaleId] = useState<string | null>(null);
@@ -143,6 +144,27 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
   const vat = subtotal * 0.16;
   const grandTotal = subtotal + vat + deliveryFee;
 
+  // Countdown timer effect
+  useEffect(() => {
+    let interval: NodeJS.Timeout;
+    if (countdown !== null && countdown > 0) {
+      interval = setInterval(() => {
+        setCountdown(prev => {
+          if (prev && prev <= 1) {
+            clearInterval(interval);
+            handleModalClose();
+            if (onCheckoutSuccess) onCheckoutSuccess();
+            return 0;
+          }
+          return prev ? prev - 1 : 0;
+        });
+      }, 1000);
+    }
+    return () => {
+      if (interval) clearInterval(interval);
+    };
+  }, [countdown, onCheckoutSuccess]);
+
   // Reset form function
   const resetForm = () => {
     setCustomerName("");
@@ -154,6 +176,7 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
     setSaleId(null);
     setCheckoutRequestId(null);
     setActiveStep('details');
+    setCountdown(null);
   };
 
   // Handle modal close with form reset
@@ -258,16 +281,11 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
     try {
       console.log("Initiating STK push via:", `${API_BASE_URL}/customer/orders/${orderId}/pay`);
 
-      // According to API docs, we need to include sale_id in the request body
       const requestData = {
-        sale_id: orderId, // This is required based on the API documentation
+        sale_id: orderId,
         payment_method: "mpesa",
         phone_number: formattedPhone,
         amount: amount
-        // Note: According to docs, these are optional for card payments:
-        // card_transaction_id: "",
-        // card_holder_name: "",
-        // card_last4: ""
       };
 
       console.log("Request data:", requestData);
@@ -287,7 +305,6 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
       console.log("STK Push Response:", stkPushResponseData);
 
       // Extract checkoutRequestId from the response
-      // Check various possible field names
       checkoutRequestId =
         stkPushResponseData?.CheckoutRequestID ||
         stkPushResponseData?.checkoutRequestID ||
@@ -317,7 +334,6 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
         if (stkPushResponseData?.message?.toLowerCase().includes("success") ||
           stkPushResponseData?.status === "success") {
           console.log("Payment initiated but no checkout ID returned");
-          // We'll consider this a success and let the polling handle it
           return {
             success: true,
             message: "Payment initiated. Please check your phone."
@@ -346,11 +362,6 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
     } catch (error: any) {
       console.error("Error initiating M-Pesa payment:", error.response?.data || error.message);
 
-      // Log detailed error information
-      if (error.response?.data?.message) {
-        console.error("Error messages:", error.response.data.message);
-      }
-
       // Provide more specific error message
       let errorMessage = "Failed to initiate payment. ";
 
@@ -359,7 +370,6 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
       } else if (error.response?.status === 400) {
         errorMessage += "Bad request. Please check the payment details.";
 
-        // Add specific validation errors if available
         if (error.response?.data?.message && Array.isArray(error.response.data.message)) {
           errorMessage += " Validation errors: " + error.response.data.message.join(", ");
         }
@@ -468,18 +478,13 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
 
         setStatus({
           type: 'success',
-          message: `Payment already completed for order ${normalizedSaleId}. Your cart has been cleared.`
+          message: `Payment already completed for order ${normalizedSaleId}. Your cart has been cleared. Closing in 5 seconds...`
         });
 
+        setCountdown(5);
         setCheckoutRequestId(orderCheck.data.payments?.find((p: any) =>
           p.status === 'completed' || p.status === 'paid'
         )?.mpesa_checkout_request_id || null);
-
-        // Show success message and auto-close after 5 seconds
-        setTimeout(() => {
-          handleModalClose();
-          if (onCheckoutSuccess) onCheckoutSuccess();
-        }, 5000);
 
         return;
       }
@@ -497,20 +502,12 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
 
           setStatus({
             type: 'success',
-            message: `Payment already completed for order ${normalizedSaleId}. Your cart has been cleared.`
+            message: `Payment already completed for order ${normalizedSaleId}. Your cart has been cleared. Closing in 5 seconds...`
           });
 
-          // Check order again to get updated payment details
+          setCountdown(5);
           await checkExistingOrder(normalizedSaleId);
-
           setCheckoutRequestId(paymentResponse.checkoutRequestID || null);
-
-          // Show success message and auto-close after 5 seconds
-          setTimeout(() => {
-            handleModalClose();
-            if (onCheckoutSuccess) onCheckoutSuccess();
-          }, 5000);
-
         } else {
           // New payment initiated
           const extractedCheckoutId = paymentResponse?.CheckoutRequestID || paymentResponse?.checkoutRequestID;
@@ -556,15 +553,10 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
 
                 setStatus({
                   type: 'success',
-                  message: `Order ${existingOrderId} already exists with completed payment. Your cart has been cleared.`
+                  message: `Order ${existingOrderId} already exists with completed payment. Your cart has been cleared. Closing in 5 seconds...`
                 });
 
-                // Show success message and auto-close after 5 seconds
-                setTimeout(() => {
-                  handleModalClose();
-                  if (onCheckoutSuccess) onCheckoutSuccess();
-                }, 5000);
-
+                setCountdown(5);
                 return;
               } else {
                 errorMessage = `Order ${existingOrderId} already exists. Please try a different order or contact support.`;
@@ -595,11 +587,7 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
       message: "Payment completed successfully! Your cart has been cleared. Closing in 5 seconds..."
     });
 
-    // Auto-close after 5 seconds
-    setTimeout(() => {
-      handleModalClose();
-      if (onCheckoutSuccess) onCheckoutSuccess();
-    }, 5000);
+    setCountdown(5);
   };
 
   const handlePaymentFailure = () => {
@@ -992,7 +980,12 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
                               '⚠️'}
                       </div>
                       <div className="flex-1">
-                        <p className="text-sm text-gray-700 dark:text-gray-300">{status.message}</p>
+                        <p className="text-sm text-gray-700 dark:text-gray-300">
+                          {status.message}
+                          {countdown !== null && countdown > 0 && status.type === 'success' && (
+                            <span className="font-bold ml-1">({countdown})</span>
+                          )}
+                        </p>
                         {saleId && (
                           <p className="text-xs font-mono text-gray-500 dark:text-gray-400 mt-2">
                             REF: {saleId}
