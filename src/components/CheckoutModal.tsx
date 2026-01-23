@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState } from "react";
 import {
   Modal,
   ModalContent,
@@ -16,7 +16,6 @@ import {
 } from "@heroui/react";
 import axios from "axios";
 import { motion, AnimatePresence } from "framer-motion";
-import toast, { Toaster } from "react-hot-toast";
 import {
   CreditCardIcon,
   UserCircleIcon,
@@ -31,6 +30,7 @@ import {
   ArrowPathIcon,
   BanknotesIcon,
   ChartBarIcon,
+  XMarkIcon,
 } from "@heroicons/react/24/outline";
 
 interface CartItem {
@@ -108,6 +108,32 @@ const formatPhoneForMpesa = (phone: string): string => {
   return cleaned;
 };
 
+// Simple Toast Component
+const Toast = ({ message, type, onClose }: { message: string; type: 'success' | 'error' | 'info'; onClose: () => void }) => {
+  const bgColor = type === 'success' ? 'bg-emerald-500' : type === 'error' ? 'bg-red-500' : 'bg-blue-500';
+  const icon = type === 'success' ? '✅' : type === 'error' ? '❌' : '📱';
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: -20 }}
+      animate={{ opacity: 1, y: 0 }}
+      exit={{ opacity: 0, y: -20 }}
+      className={`fixed top-4 right-4 z-[10000] ${bgColor} text-white px-6 py-4 rounded-lg shadow-lg flex items-center gap-3 min-w-[300px] max-w-md`}
+    >
+      <span className="text-xl">{icon}</span>
+      <div className="flex-1">
+        <p className="font-medium">{message}</p>
+      </div>
+      <Button
+        onClick={onClose}
+        className="text-white hover:text-gray-200 transition-colors p-1"
+      >
+        <XMarkIcon className="w-5 h-5" />
+      </Button>
+    </motion.div>
+  );
+};
+
 export const CheckoutModal: React.FC<CheckoutModalProps> = ({
   isOpen,
   onClose,
@@ -131,9 +157,11 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
   const [loading, setLoading] = useState(false);
   const [status, setStatus] = useState<{ type: 'success' | 'error' | 'info' | 'warning', message: string } | null>(null);
 
+  // Toast state
+  const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' | 'info'; show: boolean } | null>(null);
+
   // Order and payment states
   const [saleId, setSaleId] = useState<string | null>(null);
-  const [checkoutRequestId, setCheckoutRequestId] = useState<string | null>(null);
 
   // Modal states
   const [activeStep, setActiveStep] = useState<'details' | 'review' | 'payment'>('details');
@@ -141,6 +169,16 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
   const subtotal = cartItems.reduce((sum, item) => sum + (item.price * item.quantity), 0);
   const vat = subtotal * 0.16;
   const grandTotal = subtotal + vat + deliveryFee;
+
+  // Show toast function
+  const showToast = (message: string, type: 'success' | 'error' | 'info') => {
+    setToast({ message, type, show: true });
+
+    // Auto-hide toast after 5 seconds
+    setTimeout(() => {
+      setToast(null);
+    }, 5000);
+  };
 
   // Reset form function
   const resetForm = () => {
@@ -151,7 +189,6 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
     setDeliveryAddress("");
     setStatus(null);
     setSaleId(null);
-    setCheckoutRequestId(null);
     setActiveStep('details');
   };
 
@@ -204,9 +241,9 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
   };
 
   // Check if order already exists with completed payment
-  const checkExistingOrder = async (orderId: string): Promise<{ exists: boolean; data?: any; hasCompletedPayment?: boolean }> => {
+  const checkExistingOrder = async (id: string): Promise<{ exists: boolean; data?: any; hasCompletedPayment?: boolean }> => {
     try {
-      const response = await axios.get(`${API_BASE_URL}/customer/orders/${orderId}`);
+      const response = await axios.get(`${API_BASE_URL}/customer/orders/${id}`);
       const orderData = response.data;
       console.log("Existing order check response:", orderData);
 
@@ -373,67 +410,6 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
     };
   };
 
-  const showSuccessToast = (message: string, orderId?: string) => {
-    toast.success(
-      <div className="flex flex-col gap-1">
-        <span className="font-semibold">{message}</span>
-        {orderId && (
-          <span className="text-sm text-gray-600">Order ID: {orderId}</span>
-        )}
-        <span className="text-sm">Check your phone to complete the payment</span>
-      </div>,
-      {
-        duration: 5000,
-        position: 'top-right',
-        icon: '✅',
-        style: {
-          background: '#10b981',
-          color: 'white',
-          padding: '16px',
-          borderRadius: '12px',
-        },
-      }
-    );
-  };
-
-  const showErrorToast = (message: string) => {
-    toast.error(
-      <div className="flex flex-col gap-1">
-        <span className="font-semibold">{message}</span>
-      </div>,
-      {
-        duration: 5000,
-        position: 'top-right',
-        icon: '❌',
-        style: {
-          background: '#ef4444',
-          color: 'white',
-          padding: '16px',
-          borderRadius: '12px',
-        },
-      }
-    );
-  };
-
-  const showInfoToast = (message: string) => {
-    toast(
-      <div className="flex flex-col gap-1">
-        <span className="font-semibold">{message}</span>
-      </div>,
-      {
-        duration: 5000,
-        position: 'top-right',
-        icon: '📱',
-        style: {
-          background: '#3b82f6',
-          color: 'white',
-          padding: '16px',
-          borderRadius: '12px',
-        },
-      }
-    );
-  };
-
   const handleSubmit = async () => {
     setStatus(null);
 
@@ -514,9 +490,9 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
         if (onClearCart) onClearCart();
 
         // Show success toast
-        showSuccessToast(
+        showToast(
           `Order ${normalizedSaleId} placed successfully! Your cart has been cleared.`,
-          normalizedSaleId
+          'success'
         );
 
         // Close modal after 5 seconds
@@ -540,9 +516,9 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
           if (onClearCart) onClearCart();
 
           // Show success toast
-          showSuccessToast(
+          showToast(
             `Order ${normalizedSaleId} placed successfully! Your cart has been cleared.`,
-            normalizedSaleId
+            'success'
           );
 
           // Close modal after 5 seconds
@@ -557,8 +533,9 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
           if (onClearCart) onClearCart();
 
           // Show info toast for payment initiation
-          showInfoToast(
-            `Order ${normalizedSaleId} created! Check your phone to complete the M-Pesa payment.`
+          showToast(
+            `Order ${normalizedSaleId} created! Check your phone to complete the M-Pesa payment.`,
+            'info'
           );
 
           // Show success message in modal
@@ -578,8 +555,9 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
         console.error("Payment initiation error:", error);
 
         // Show error toast
-        showErrorToast(
-          `Order ${normalizedSaleId} created but payment initiation failed. Please contact support.`
+        showToast(
+          `Order ${normalizedSaleId} created but payment initiation failed. Please contact support.`,
+          'error'
         );
 
         setStatus({
@@ -608,9 +586,9 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
                 if (onClearCart) onClearCart();
 
                 // Show success toast
-                showSuccessToast(
+                showToast(
                   `Order ${existingOrderId} already exists with completed payment. Your cart has been cleared.`,
-                  existingOrderId
+                  'success'
                 );
 
                 // Close modal after 5 seconds
@@ -631,7 +609,7 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
       }
 
       // Show error toast
-      showErrorToast(errorMessage);
+      showToast(errorMessage, 'error');
 
       setStatus({
         type: 'error',
@@ -707,8 +685,14 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
 
   return (
     <>
-      {/* Add Toaster for toast notifications */}
-      <Toaster />
+      {/* Custom Toast Notification */}
+      {toast?.show && (
+        <Toast
+          message={toast.message}
+          type={toast.type}
+          onClose={() => setToast(null)}
+        />
+      )}
 
       {/* Main Checkout Modal */}
       <Modal
