@@ -390,6 +390,25 @@ export default function StorefrontPage() {
     }
   };
 
+  // Add these functions to your main page component:
+
+  // Clear all items from cart
+  const handleClearCart = () => {
+    console.log("Clearing cart...");
+    setCart([]);
+  };
+
+  // Handle successful checkout
+  const handleCheckoutSuccess = () => {
+    console.log("Checkout successful, clearing cart...");
+    setCart([]);
+    setCheckoutOpen(false);
+    setDrawerOpen(false);
+
+    // Optional: Show success message
+    // You could add a toast notification here
+  };
+
   const handleIncrease = (cartId: string) => {
     setCart((prev) =>
       prev.map((item) =>
@@ -1233,6 +1252,7 @@ export default function StorefrontPage() {
           setDrawerOpen(false);
           setCheckoutOpen(true);
         }}
+        onClearAll={handleClearCart} // Add this prop
         subtotal={subtotal}
         deliveryFee={deliveryFee}
         total={total}
@@ -1241,12 +1261,14 @@ export default function StorefrontPage() {
       <CheckoutModal
         isOpen={checkoutOpen}
         onClose={() => setCheckoutOpen(false)}
-        total={total + deliveryFee}
+        total={total + (subtotal * 0.16)} // Make sure to include VAT
         cartItems={cart}
         productSaleType={useApiProducts ? apiProductSaleType : productSaleType}
         storeId="STR251100001"
         deliveryFee={deliveryFee}
         deliveryArea={deliveryArea}
+        onClearCart={handleClearCart} // Add this prop
+        onCheckoutSuccess={handleCheckoutSuccess} // Add this prop
       />
 
       <AnimatePresence>

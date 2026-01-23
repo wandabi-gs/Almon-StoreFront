@@ -286,7 +286,7 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
   const handleSubmit = async () => {
     setStatus(null);
 
-    // Validation
+    // Validation (same as before)
     if (!customerName || !phoneNumber || !recipientName || !recipientPhone || !deliveryAddress) {
       setStatus({
         type: 'error',
@@ -315,6 +315,7 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
     try {
       setLoading(true);
       const orderData = formatOrderData();
+      let orderResponse: any = null;
       let rawSaleId: string | null = null;
 
       // Step 1: Submit order
@@ -328,7 +329,8 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
           console.log("Creating order with data:", orderData);
           const orderRes = await axios.post(`${API_BASE_URL}/customer/orders`, orderData);
           console.log("Order creation response:", orderRes.data);
-          rawSaleId = orderRes.data?.sale_id || orderRes.data?.id || orderRes.data?.order_id || null;
+          orderResponse = orderRes.data; // Save the full response
+          rawSaleId = orderRes.data?.id || orderRes.data?.sale_id || orderRes.data?.order_id || null;
         } catch (error: any) {
           console.error("Order creation error:", error.response?.data || error.message);
 
@@ -347,7 +349,7 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
         }
       }
 
-      const id = normalizeSaleId(rawSaleId); // Use id variable name
+      const id = normalizeSaleId(rawSaleId);
 
       if (!id) {
         throw new Error("Failed to get order ID from server");
@@ -387,17 +389,28 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
       try {
         console.log("Initiating payment via:", `${API_BASE_URL}/customer/orders/${id}/pay`);
 
+        // Get the correct amount from the server response
+        // Use payable_amount or total_amount from the order creation response
+        const paymentAmount = orderResponse?.payable_amount ||
+          orderResponse?.total_amount ||
+          orderCheck.data?.payable_amount ||
+          orderCheck.data?.total_amount;
+
+        if (!paymentAmount) {
+          throw new Error("Could not determine payment amount from server");
+        }
+
         const requestData = {
           sale_id: id,
           payment_method: "mpesa",
           phone_number: formatPhoneForMpesa(phoneNumber),
-          amount: grandTotal
+          amount: parseFloat(paymentAmount) // Use the server-provided amount
         };
 
         console.log("Payment request data:", requestData);
 
         const response = await axios.post(
-          `${API_BASE_URL}/customer/orders/${id}/pay`,  // Correct endpoint using id
+          `${API_BASE_URL}/customer/orders/${id}/pay`,
           requestData,
           {
             headers: {
@@ -433,20 +446,25 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
       } catch (error: any) {
         console.error("Payment initiation error:", error.response?.data || error.message);
 
+        // Log more details about the error
+        if (error.response?.data) {
+          console.error("Payment error details:", error.response.data);
+        }
+
         // Even if payment fails, we still created the order
         // Clear cart for consistency
         if (onClearCart) onClearCart();
 
         // Show warning toast
         showToast(
-          `Order ${id} created! Payment initiation may have issues. Please check your phone.`,
+          `Order ${id} created! Payment initiation failed. Please contact support.`,
           'info'
         );
 
         // Show warning message in modal
         setStatus({
           type: 'warning',
-          message: `Order ${id} created! Please check your phone for payment prompt. If not received, contact support.`
+          message: `Order ${id} created! Payment failed: ${error.response?.data?.message || error.message}. Please contact support.`
         });
 
         // Still close modal after 5 seconds
@@ -706,7 +724,7 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
 
                         <div className={`${isMobile ? 'space-y-4' : 'grid md:grid-cols-2 gap-4'}`}>
                           <Input
-                            label={isMobile ? "Full Name" : "Customer Name"}
+                            placeholder="Enter Full Name"
                             value={customerName}
                             onChange={(e) => setCustomerName(e.target.value)}
                             isRequired

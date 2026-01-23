@@ -40,6 +40,7 @@ interface CartDrawerProps {
   cartItems: CartItem[];
   onRemove: (id: string) => void;
   onCheckout: () => void;
+  onClearAll?: () => void;
   subtotal: number;
   deliveryFee: number;
   total: number;
@@ -51,6 +52,7 @@ export const CartDrawer: React.FC<CartDrawerProps> = ({
   cartItems,
   onRemove,
   onCheckout,
+  onClearAll,
   subtotal,
   deliveryFee,
   total,
@@ -361,8 +363,12 @@ export const CartDrawer: React.FC<CartDrawerProps> = ({
                     variant="light"
                     className="flex-1 bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700"
                     onPress={() => {
-                      // Clear cart functionality
-                      cartItems.forEach(item => onRemove(item.id));
+                      if (onClearAll) {
+                        onClearAll();
+                      } else {
+                        // Fallback for backward compatibility
+                        cartItems.forEach(item => onRemove(item.id));
+                      }
                     }}
                   >
                     Clear All
