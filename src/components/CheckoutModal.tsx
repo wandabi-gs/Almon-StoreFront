@@ -673,7 +673,7 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
     <>
       {/* Main Checkout Modal */}
       <Modal
-        isOpen={isOpen}
+        isOpen={isOpen && !showPaymentModal}  // Only show when not showing payment modal
         onClose={handleModalClose}
         size="5xl"
         scrollBehavior="outside"
