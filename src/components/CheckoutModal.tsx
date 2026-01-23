@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useRef, useCallback } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import {
   Modal,
   ModalContent,
@@ -170,7 +170,6 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
   // Responsive states
   const [isMobile, setIsMobile] = useState(false);
   const [isTablet, setIsTablet] = useState(false);
-  const [keyboardVisible, setKeyboardVisible] = useState(false);
 
   // Ref for scrollable content wrapper (not ModalBody)
   const contentWrapperRef = useRef<HTMLDivElement>(null);
@@ -183,12 +182,8 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
   useEffect(() => {
     const checkScreenSize = () => {
       const width = window.innerWidth;
-      const height = window.innerHeight;
       setIsMobile(width < 768);
       setIsTablet(width >= 768 && width < 1024);
-
-      // Check if keyboard is visible (viewport height reduced significantly)
-      setKeyboardVisible(height < width * 0.8);
     };
 
     checkScreenSize();
@@ -200,45 +195,6 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
       window.removeEventListener('orientationchange', checkScreenSize);
     };
   }, []);
-
-  // Handle keyboard visibility for mobile
-  const handleFocus = useCallback((e: Event) => {
-    setKeyboardVisible(true);
-    // Scroll to active input
-    setTimeout(() => {
-      const target = e.target as HTMLElement;
-      if (target && contentWrapperRef.current) {
-        target.scrollIntoView({
-          behavior: 'smooth',
-          block: 'center',
-          inline: 'nearest'
-        });
-      }
-    }, 100);
-  }, []);
-
-  const handleBlur = useCallback(() => {
-    setKeyboardVisible(false);
-  }, []);
-
-  useEffect(() => {
-    if (!isMobile || !isOpen) return;
-
-    const inputs = document.querySelectorAll('input, textarea');
-    const focusListener = handleFocus as EventListener;
-
-    inputs.forEach(input => {
-      input.addEventListener('focus', focusListener);
-      input.addEventListener('blur', handleBlur);
-    });
-
-    return () => {
-      inputs.forEach(input => {
-        input.removeEventListener('focus', focusListener);
-        input.removeEventListener('blur', handleBlur);
-      });
-    };
-  }, [isMobile, isOpen, activeStep, handleFocus, handleBlur]);
 
   // Show toast function
   const showToast = (message: string, type: 'success' | 'error' | 'info') => {
@@ -260,7 +216,6 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
     setStatus(null);
     setSaleId(null);
     setActiveStep('details');
-    setKeyboardVisible(false);
   };
 
   // Handle modal close with form reset
@@ -778,14 +733,14 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
       >
         <ModalContent
           className={`bg-gradient-to-b from-white to-gray-50 dark:from-gray-900 dark:to-gray-800 border border-gray-200 dark:border-gray-700 shadow-3xl ${isMobile
-            ? `max-h-[95vh] ${keyboardVisible ? 'h-[85vh]' : 'h-[90vh]'}`
+            ? 'max-h-[95vh] h-[90vh]'
             : 'h-auto'
             }`}
         >
           {isMobile ? (
             <>
               {renderMobileHeader()}
-              <ModalBody className={`overflow-y-auto flex-1 px-4 ${keyboardVisible ? 'pb-32' : 'pb-4'}`}>
+              <ModalBody className={`overflow-y-auto flex-1 px-4 pb-4`}>
                 <div ref={contentWrapperRef} className="space-y-6">
                   {renderStepIndicator()}
 
@@ -1052,7 +1007,7 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
               </ModalBody>
 
               {/* Mobile Footer - Fixed at bottom */}
-              <ModalFooter className={`sticky bottom-0 border-t border-gray-200 dark:border-gray-700 bg-gradient-to-b from-white to-gray-50 dark:from-gray-900 dark:to-gray-800 p-4 ${keyboardVisible ? 'pb-8' : ''}`}>
+              <ModalFooter className={`sticky bottom-0 border-t border-gray-200 dark:border-gray-700 bg-gradient-to-b from-white to-gray-50 dark:from-gray-900 dark:to-gray-800 p-4`}>
                 <div className="flex flex-col gap-3 w-full">
                   {activeStep === 'details' && (
                     <Button
