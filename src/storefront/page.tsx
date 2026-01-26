@@ -1397,9 +1397,14 @@ export default function StorefrontPage() {
             {/* Company */}
             <div>
               <div className="flex items-center space-x-3 mb-6">
-                <div className="w-12 h-12 sm:w-14 sm:h-14 rounded-xl bg-gradient-to-br from-blue-500 to-cyan-400 flex items-center justify-center">
-                  <div className="text-lg sm:text-xl font-bold text-white">AP</div>
+                <div className="w-12 h-12 sm:w-14 sm:h-14 rounded-xl bg-brand-orange-500 flex items-center justify-center shadow-soft">
+                  <img
+                    src="/src/assets/logo.jpg"
+                    alt="Almon Products Limited"
+                    className="w-8 h-8 sm:w-9 sm:h-9 object-contain"
+                  />
                 </div>
+
                 <div>
                   <h2 className="text-xl sm:text-2xl font-bold">Almon Products</h2>
                   <p className="text-xs sm:text-sm text-gray-400">Enterprise Solutions</p>
