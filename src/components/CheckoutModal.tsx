@@ -31,8 +31,7 @@ import {
   BanknotesIcon,
   ChartBarIcon,
   XMarkIcon,
-  ChevronLeftIcon,
-  ChevronRightIcon
+  ChevronLeftIcon
 } from "@heroicons/react/24/outline";
 
 interface CartItem {
@@ -110,6 +109,8 @@ const formatPhoneForMpesa = (phone: string): string => {
   return cleaned;
 };
 
+
+
 // Simple Toast Component
 const Toast = ({ message, type, onClose }: { message: string; type: 'success' | 'error' | 'info'; onClose: () => void }) => {
   const bgColor = type === 'success' ? 'bg-emerald-500' : type === 'error' ? 'bg-red-500' : 'bg-blue-500';
@@ -165,14 +166,14 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
   // Order and payment states
   const [saleId, setSaleId] = useState<string | null>(null);
 
-  // Modal states - separate types for mobile and desktop
-  const [activeStep, setActiveStep] = useState<'contact' | 'delivery' | 'review' | 'payment'>('contact');
+  // Modal states
+  const [activeStep, setActiveStep] = useState<'details' | 'review' | 'payment'>('details');
 
   // Responsive states
   const [isMobile, setIsMobile] = useState(false);
   const [isTablet, setIsTablet] = useState(false);
 
-  // Ref for scrollable content wrapper
+  // Ref for scrollable content wrapper (not ModalBody)
   const contentWrapperRef = useRef<HTMLDivElement>(null);
 
   const subtotal = cartItems.reduce((sum, item) => sum + (item.price * item.quantity), 0);
@@ -197,12 +198,30 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
     };
   }, []);
 
-  // Reset scroll position when step changes on mobile
+  // Add this useEffect for keyboard handling
   useEffect(() => {
-    if (isMobile && contentWrapperRef.current) {
-      contentWrapperRef.current.scrollTop = 0;
-    }
-  }, [activeStep, isMobile]);
+    if (!isMobile || !isOpen) return;
+
+    const handleResize = () => {
+      if (document.activeElement?.tagName === 'INPUT' ||
+        document.activeElement?.tagName === 'TEXTAREA') {
+        // Force scroll to input when keyboard is open
+        setTimeout(() => {
+          document.activeElement?.scrollIntoView({
+            behavior: 'smooth',
+            block: 'center',
+            inline: 'nearest'
+          });
+        }, 100);
+      }
+    };
+
+    window.addEventListener('resize', handleResize);
+
+    return () => {
+      window.removeEventListener('resize', handleResize);
+    };
+  }, [isMobile, isOpen]);
 
   // Show toast function
   const showToast = (message: string, type: 'success' | 'error' | 'info') => {
@@ -223,38 +242,13 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
     setDeliveryAddress("");
     setStatus(null);
     setSaleId(null);
-    setActiveStep('contact');
+    setActiveStep('details');
   };
 
   // Handle modal close with form reset
   const handleModalClose = () => {
     resetForm();
     onClose();
-  };
-
-  // Handle step navigation
-  const goToNextStep = () => {
-    if (activeStep === 'contact') {
-      if (!customerName.trim() || !phoneNumber.trim()) {
-        showToast("Please fill in both name and phone number", 'error');
-        return;
-      }
-      setActiveStep('delivery');
-    } else if (activeStep === 'delivery') {
-      if (!recipientName.trim() || !recipientPhone.trim() || !deliveryAddress.trim()) {
-        showToast("Please fill in all delivery details", 'error');
-        return;
-      }
-      setActiveStep('review');
-    }
-  };
-
-  const goToPreviousStep = () => {
-    if (activeStep === 'delivery') {
-      setActiveStep('contact');
-    } else if (activeStep === 'review') {
-      setActiveStep('delivery');
-    }
   };
 
   const formatOrderData = () => {
@@ -585,18 +579,11 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
   };
 
   const renderStepIndicator = () => {
-    // Different steps for mobile vs desktop
-    const steps = isMobile
-      ? [
-        { key: 'contact' as const, label: 'Contact', icon: UserCircleIcon },
-        { key: 'delivery' as const, label: 'Delivery', icon: TruckIcon },
-        { key: 'review' as const, label: 'Review', icon: DocumentTextIcon },
-      ]
-      : [
-        { key: 'contact' as const, label: 'Details', icon: UserCircleIcon },
-        { key: 'review' as const, label: 'Review', icon: DocumentTextIcon },
-        { key: 'payment' as const, label: 'Payment', icon: CreditCardIcon },
-      ];
+    const steps = [
+      { key: 'details', label: 'Details', icon: UserCircleIcon },
+      { key: 'review', label: 'Review', icon: DocumentTextIcon },
+      { key: 'payment', label: 'Payment', icon: CreditCardIcon },
+    ];
 
     // Mobile: Compact step indicator
     if (isMobile) {
@@ -607,8 +594,8 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
               const Icon = step.icon;
               const isActive = activeStep === step.key;
               const isCompleted =
-                (step.key === 'contact' && (activeStep === 'delivery' || activeStep === 'review')) ||
-                (step.key === 'delivery' && activeStep === 'review');
+                (step.key === 'details' && activeStep !== 'details') ||
+                (step.key === 'review' && activeStep === 'payment');
 
               return (
                 <div key={step.key} className="flex flex-col items-center flex-1">
@@ -642,10 +629,9 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
           {steps.map((step) => {
             const Icon = step.icon;
             const isActive = activeStep === step.key;
-            // For desktop, we only have 'contact' and 'review' steps
             const isCompleted =
-              (step.key === 'contact' && activeStep === 'review') ||
-              (step.key === 'contact' && activeStep === 'payment');
+              (step.key === 'details' && activeStep !== 'details') ||
+              (step.key === 'review' && activeStep === 'payment');
 
             return (
               <div key={step.key} className="flex flex-col items-center relative z-10">
@@ -673,7 +659,7 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
               className="h-full bg-gradient-to-r from-blue-600 to-cyan-600"
               initial={{ width: '0%' }}
               animate={{
-                width: activeStep === 'contact' ? '0%' :
+                width: activeStep === 'details' ? '0%' :
                   activeStep === 'review' ? '50%' : '100%'
               }}
               transition={{ duration: 0.3 }}
@@ -700,22 +686,18 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
             isIconOnly
             variant="light"
             size="sm"
-            onPress={activeStep !== 'contact' ? goToPreviousStep : handleModalClose}
+            onPress={activeStep === 'review' ? () => setActiveStep('details') : handleModalClose}
             className="w-8 h-8 min-w-8"
           >
             <ChevronLeftIcon className="w-5 h-5" />
           </Button>
           <div>
             <h2 className="font-bold bg-gradient-to-r from-blue-600 to-cyan-600 bg-clip-text text-transparent text-lg">
-              {activeStep === 'contact' ? 'Contact Info' :
-                activeStep === 'delivery' ? 'Delivery Info' :
-                  activeStep === 'review' ? 'Review Order' : 'Payment'}
+              {activeStep === 'details' ? 'Checkout Details' :
+                activeStep === 'review' ? 'Review Order' : 'Payment'}
             </h2>
             <p className="text-xs text-gray-600 dark:text-gray-400">
-              {isMobile
-                ? `Step ${activeStep === 'contact' ? '1' : activeStep === 'delivery' ? '2' : '3'} of 3`
-                : `Step ${activeStep === 'contact' ? '1' : activeStep === 'review' ? '2' : '3'} of 3`
-              }
+              Step {activeStep === 'details' ? '1' : activeStep === 'review' ? '2' : '3'} of 3
             </p>
           </div>
         </div>
@@ -730,255 +712,6 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
       </div>
     </div>
   );
-
-  // Render mobile form steps
-  const renderMobileFormStep = () => {
-    switch (activeStep) {
-      case 'contact':
-        return (
-          <motion.div
-            key="contact"
-            initial={{ opacity: 0, y: 10 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -10 }}
-            className="space-y-6"
-          >
-            {/* Contact Information */}
-            <div className="bg-white dark:bg-gray-800 rounded-xl p-4 border border-gray-200 dark:border-gray-700 shadow-sm">
-              <div className="flex items-center gap-3 mb-4">
-                <div className="p-2 rounded-lg bg-blue-50 dark:bg-blue-900/30">
-                  <UserCircleIcon className="w-5 h-5 text-blue-600 dark:text-blue-400" />
-                </div>
-                <h3 className="font-bold text-gray-900 dark:text-white">Contact Information</h3>
-              </div>
-
-              <div className="space-y-4">
-                <Input
-                  placeholder="Your Full Name"
-                  value={customerName}
-                  onChange={(e) => setCustomerName(e.target.value)}
-                  isRequired
-                  disabled={loading}
-                  size="sm"
-                  classNames={{
-                    input: "text-sm py-3",
-                    label: "text-sm text-gray-700 dark:text-gray-300"
-                  }}
-                />
-                <Input
-                  type="tel"
-                  placeholder="07XXXXXXXX"
-                  value={phoneNumber}
-                  onChange={(e) => setPhoneNumber(e.target.value)}
-                  isRequired
-                  disabled={loading}
-                  startContent={<PhoneIcon className="w-4 h-4 text-gray-400" />}
-                  size="sm"
-                  classNames={{
-                    input: "text-sm py-3",
-                    label: "text-sm text-gray-700 dark:text-gray-300"
-                  }}
-                />
-              </div>
-            </div>
-
-            {/* Removed Order Summary Preview from Step 1 */}
-          </motion.div>
-        );
-
-      case 'delivery':
-        return (
-          <motion.div
-            key="delivery"
-            initial={{ opacity: 0, y: 10 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -10 }}
-            className="space-y-6"
-          >
-            {/* Delivery Information */}
-            <div className="bg-white dark:bg-gray-800 rounded-xl p-4 border border-gray-200 dark:border-gray-700 shadow-sm">
-              <div className="flex items-center gap-3 mb-4">
-                <div className="p-2 rounded-lg bg-emerald-50 dark:bg-emerald-900/30">
-                  <TruckIcon className="w-5 h-5 text-emerald-600 dark:text-emerald-400" />
-                </div>
-                <h3 className="font-bold text-gray-900 dark:text-white">Delivery Details</h3>
-              </div>
-
-              <div className="space-y-4">
-                <Input
-                  placeholder="Recipient Name"
-                  value={recipientName}
-                  onChange={(e) => setRecipientName(e.target.value)}
-                  isRequired
-                  disabled={loading}
-                  size="sm"
-                  classNames={{
-                    input: "text-sm py-3",
-                    label: "text-sm text-gray-700 dark:text-gray-300"
-                  }}
-                />
-                <Input
-                  type="tel"
-                  placeholder="07XXXXXXXX"
-                  value={recipientPhone}
-                  onChange={(e) => setRecipientPhone(e.target.value)}
-                  isRequired
-                  disabled={loading}
-                  startContent={<PhoneIcon className="w-4 h-4 text-gray-400" />}
-                  size="sm"
-                  classNames={{
-                    input: "text-sm py-3",
-                    label: "text-sm text-gray-700 dark:text-gray-300"
-                  }}
-                />
-                <Input
-                  placeholder="Building, Street, Floor, Landmarks"
-                  value={deliveryAddress}
-                  onChange={(e) => setDeliveryAddress(e.target.value)}
-                  isRequired
-                  disabled={loading}
-                  size="sm"
-                  classNames={{
-                    input: "text-sm py-3",
-                    label: "text-sm text-gray-700 dark:text-gray-300"
-                  }}
-                  startContent={<MapPinIcon className="w-4 h-4 text-gray-400" />}
-                />
-              </div>
-            </div>
-          </motion.div>
-        );
-
-      case 'review':
-        return (
-          <motion.div
-            key="review"
-            initial={{ opacity: 0, y: 10 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -10 }}
-            className="space-y-6"
-          >
-            {/* Order Summary Review */}
-            <div className="bg-white dark:bg-gray-800 rounded-xl p-4 border border-gray-200 dark:border-gray-700 shadow-sm">
-              <div className="flex items-center gap-3 mb-4">
-                <div className="p-2 rounded-lg bg-amber-50 dark:bg-amber-900/30">
-                  <DocumentTextIcon className="w-5 h-5 text-amber-600 dark:text-amber-400" />
-                </div>
-                <h3 className="font-bold text-gray-900 dark:text-white">Review Order</h3>
-              </div>
-
-              <div className="space-y-4">
-                <div>
-                  <h4 className="font-semibold text-gray-900 dark:text-white mb-2 text-sm">Contact Information</h4>
-                  <div className="space-y-1 text-sm text-gray-600 dark:text-gray-400 bg-gray-50 dark:bg-gray-700/50 p-3 rounded-lg">
-                    <p>{customerName}</p>
-                    <p>{phoneNumber}</p>
-                  </div>
-                </div>
-                <div>
-                  <h4 className="font-semibold text-gray-900 dark:text-white mb-2 text-sm">Delivery Information</h4>
-                  <div className="space-y-1 text-sm text-gray-600 dark:text-gray-400 bg-gray-50 dark:bg-gray-700/50 p-3 rounded-lg">
-                    <p>{recipientName}</p>
-                    <p>{recipientPhone}</p>
-                    <p className="line-clamp-2">{deliveryAddress}</p>
-                  </div>
-                </div>
-
-                <Divider />
-
-                <div>
-                  <h4 className="font-semibold text-gray-900 dark:text-white mb-3 text-sm">Order Items</h4>
-                  <div className="space-y-3 max-h-60 overflow-y-auto pr-2">
-                    {cartItems.map((item) => (
-                      <div key={item.id} className="flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-700/50 rounded-lg">
-                        <div className="flex-1 min-w-0">
-                          <p className="font-medium text-gray-900 dark:text-white text-sm truncate">
-                            {item.name}
-                          </p>
-                          <p className="text-xs text-gray-500 dark:text-gray-400">
-                            {item.variant} × {item.quantity}
-                          </p>
-                        </div>
-                        <p className="font-bold text-gray-900 dark:text-white text-sm ml-2">
-                          KES {(item.price * item.quantity).toLocaleString()}
-                        </p>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            {/* Payment Method */}
-            <Card className="border border-gray-200 dark:border-gray-700">
-              <CardBody className="p-4">
-                <div className="flex items-center gap-3 mb-3">
-                  <div className="p-2 rounded-lg bg-green-100 dark:bg-green-900/30">
-                    <BanknotesIcon className="w-4 h-4 text-green-600 dark:text-green-400" />
-                  </div>
-                  <h3 className="font-bold text-gray-900 dark:text-white text-sm">Payment Method</h3>
-                </div>
-                <div className="flex items-center gap-3 p-3 bg-gradient-to-r from-green-50 to-emerald-50 dark:from-green-900/20 dark:to-emerald-900/20 rounded-lg border border-green-200 dark:border-green-800">
-                  <div className="rounded-lg bg-green-500 flex items-center justify-center w-8 h-8">
-                    <span className="text-white font-bold text-xs">M</span>
-                  </div>
-                  <div>
-                    <p className="font-semibold text-gray-900 dark:text-white text-sm">M-Pesa STK Push</p>
-                    <p className="text-gray-600 dark:text-gray-400 text-xs">Secure mobile payment</p>
-                  </div>
-                </div>
-              </CardBody>
-            </Card>
-
-            {/* Final Summary */}
-            <Card className="border border-gray-200 dark:border-gray-700">
-              <CardBody className="p-4">
-                <h3 className="font-bold text-gray-900 dark:text-white mb-3">Order Summary</h3>
-                <div className="space-y-2">
-                  <div className="flex justify-between items-center">
-                    <span className="text-sm text-gray-600 dark:text-gray-400">Items</span>
-                    <span className="font-medium text-sm text-gray-900 dark:text-white">
-                      {cartItems.reduce((sum, item) => sum + item.quantity, 0)}
-                    </span>
-                  </div>
-                  <div className="flex justify-between items-center">
-                    <span className="text-sm text-gray-600 dark:text-gray-400">Subtotal</span>
-                    <span className="font-medium text-sm text-gray-900 dark:text-white">
-                      KES {subtotal.toLocaleString()}
-                    </span>
-                  </div>
-                  <div className="flex justify-between items-center">
-                    <span className="text-sm text-gray-600 dark:text-gray-400">VAT (16%)</span>
-                    <span className="font-medium text-sm text-gray-900 dark:text-white">
-                      KES {vat.toLocaleString()}
-                    </span>
-                  </div>
-                  {deliveryFee > 0 && (
-                    <div className="flex justify-between items-center">
-                      <span className="text-sm text-gray-600 dark:text-gray-400">Delivery</span>
-                      <span className="font-medium text-sm text-emerald-600 dark:text-emerald-400">
-                        KES {deliveryFee.toLocaleString()}
-                      </span>
-                    </div>
-                  )}
-                  <Divider className="my-2" />
-                  <div className="flex justify-between items-center pt-1">
-                    <span className="font-bold text-gray-900 dark:text-white">Total Amount</span>
-                    <div className="text-right">
-                      <div className="font-bold bg-gradient-to-r from-blue-600 to-cyan-600 bg-clip-text text-transparent text-lg">
-                        KES {grandTotal.toLocaleString()}
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </CardBody>
-            </Card>
-          </motion.div>
-        );
-      default:
-        return null;
-    }
-  };
 
   return (
     <>
@@ -1024,12 +757,19 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
             },
           }
         }}
+
+        shouldBlockScroll={false}
+        closeButton={!isMobile}
       >
         <ModalContent
           className={`bg-gradient-to-b from-white to-gray-50 dark:from-gray-900 dark:to-gray-800 border border-gray-200 dark:border-gray-700 shadow-3xl ${isMobile
-            ? 'max-h-[95vh] h-[90vh]'
+            ? 'max-h-[95vh] h-[90vh] touch-manipulation' // Add touch-manipulation
             : 'h-auto'
             }`}
+          style={isMobile ? {
+            touchAction: 'manipulation',
+            WebkitOverflowScrolling: 'touch'
+          } : {}}
         >
           {isMobile ? (
             <>
@@ -1037,8 +777,230 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
               <ModalBody className={`overflow-y-auto flex-1 px-4 pb-4`}>
                 <div ref={contentWrapperRef} className="space-y-6">
                   {renderStepIndicator()}
+
                   <AnimatePresence mode="wait">
-                    {renderMobileFormStep()}
+                    {activeStep === 'details' && (
+                      <motion.div
+                        key="details"
+                        initial={{ opacity: 0, y: 10 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        exit={{ opacity: 0, y: -10 }}
+                        className="space-y-6"
+                      >
+                        {/* Customer Information */}
+                        <div className="bg-white dark:bg-gray-800 rounded-xl p-4 border border-gray-200 dark:border-gray-700 shadow-sm">
+                          <div className="flex items-center gap-3 mb-4">
+                            <div className="p-2 rounded-lg bg-blue-50 dark:bg-blue-900/30">
+                              <UserCircleIcon className="w-5 h-5 text-blue-600 dark:text-blue-400" />
+                            </div>
+                            <h3 className="font-bold text-gray-900 dark:text-white">Primary Contact</h3>
+                          </div>
+
+                          <div className="space-y-4">
+                            <Input
+                              placeholder="John Doe"
+                              value={customerName}
+                              onChange={(e) => setCustomerName(e.target.value)}
+                              isRequired
+                              disabled={loading}
+                              size="sm"
+                              classNames={{
+                                input: "text-sm py-3",
+                                label: "text-sm text-gray-700 dark:text-gray-300"
+                              }}
+                            />
+                            <Input
+                              type="tel"
+                              placeholder="07XXXXXXXX"
+                              value={phoneNumber}
+                              onChange={(e) => setPhoneNumber(e.target.value)}
+                              isRequired
+                              disabled={loading}
+                              startContent={<PhoneIcon className="w-4 h-4 text-gray-400" />}
+                              size="sm"
+                              classNames={{
+                                input: "text-sm py-3",
+                                label: "text-sm text-gray-700 dark:text-gray-300"
+                              }}
+                            />
+                          </div>
+                        </div>
+
+                        {/* Delivery Information */}
+                        <div className="bg-white dark:bg-gray-800 rounded-xl p-4 border border-gray-200 dark:border-gray-700 shadow-sm">
+                          <div className="flex items-center gap-3 mb-4">
+                            <div className="p-2 rounded-lg bg-emerald-50 dark:bg-emerald-900/30">
+                              <TruckIcon className="w-5 h-5 text-emerald-600 dark:text-emerald-400" />
+                            </div>
+                            <h3 className="font-bold text-gray-900 dark:text-white">Delivery Details</h3>
+                          </div>
+
+                          <div className="space-y-4">
+                            <Input
+                              placeholder="Recipient Name"
+                              value={recipientName}
+                              onChange={(e) => setRecipientName(e.target.value)}
+                              isRequired
+                              disabled={loading}
+                              size="sm"
+                              classNames={{
+                                input: "text-sm py-3",
+                                label: "text-sm text-gray-700 dark:text-gray-300"
+                              }}
+                            />
+                            <Input
+                              type="tel"
+                              placeholder="07XXXXXXXX"
+                              value={recipientPhone}
+                              onChange={(e) => setRecipientPhone(e.target.value)}
+                              isRequired
+                              disabled={loading}
+                              startContent={<PhoneIcon className="w-4 h-4 text-gray-400" />}
+                              size="sm"
+                              classNames={{
+                                input: "text-sm py-3",
+                                label: "text-sm text-gray-700 dark:text-gray-300"
+                              }}
+                            />
+                            <Input
+                              placeholder="Building, Street, Floor, Landmarks"
+                              value={deliveryAddress}
+                              onChange={(e) => setDeliveryAddress(e.target.value)}
+                              isRequired
+                              disabled={loading}
+                              size="sm"
+                              classNames={{
+                                input: "text-sm py-3",
+                                label: "text-sm text-gray-700 dark:text-gray-300"
+                              }}
+                              startContent={<MapPinIcon className="w-4 h-4 text-gray-400" />}
+                            />
+                          </div>
+                        </div>
+
+                        {/* Order Summary Preview for Mobile */}
+                        <Card className="border border-gray-200 dark:border-gray-700">
+                          <CardBody className="p-4">
+                            <h3 className="font-bold text-gray-900 dark:text-white mb-3">Order Summary</h3>
+                            <div className="space-y-2">
+                              <div className="flex justify-between items-center">
+                                <span className="text-sm text-gray-600 dark:text-gray-400">Subtotal</span>
+                                <span className="font-medium text-sm text-gray-900 dark:text-white">
+                                  KES {subtotal.toLocaleString()}
+                                </span>
+                              </div>
+                              <div className="flex justify-between items-center">
+                                <span className="text-sm text-gray-600 dark:text-gray-400">VAT (16%)</span>
+                                <span className="font-medium text-sm text-gray-900 dark:text-white">
+                                  KES {vat.toLocaleString()}
+                                </span>
+                              </div>
+                              {deliveryFee > 0 && (
+                                <div className="flex justify-between items-center">
+                                  <span className="text-sm text-gray-600 dark:text-gray-400">Delivery</span>
+                                  <span className="font-medium text-sm text-emerald-600 dark:text-emerald-400">
+                                    KES {deliveryFee.toLocaleString()}
+                                  </span>
+                                </div>
+                              )}
+                              <Divider className="my-2" />
+                              <div className="flex justify-between items-center pt-1">
+                                <span className="font-bold text-gray-900 dark:text-white">Total</span>
+                                <div className="text-right">
+                                  <div className="font-bold bg-gradient-to-r from-blue-600 to-cyan-600 bg-clip-text text-transparent text-lg">
+                                    KES {grandTotal.toLocaleString()}
+                                  </div>
+                                </div>
+                              </div>
+                            </div>
+                          </CardBody>
+                        </Card>
+                      </motion.div>
+                    )}
+
+                    {activeStep === 'review' && (
+                      <motion.div
+                        key="review"
+                        initial={{ opacity: 0, y: 10 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        exit={{ opacity: 0, y: -10 }}
+                        className="space-y-6"
+                      >
+                        {/* Order Summary Card */}
+                        <div className="bg-white dark:bg-gray-800 rounded-xl p-4 border border-gray-200 dark:border-gray-700 shadow-sm">
+                          <div className="flex items-center gap-3 mb-4">
+                            <div className="p-2 rounded-lg bg-amber-50 dark:bg-amber-900/30">
+                              <DocumentTextIcon className="w-5 h-5 text-amber-600 dark:text-amber-400" />
+                            </div>
+                            <h3 className="font-bold text-gray-900 dark:text-white">Order Summary</h3>
+                          </div>
+
+                          <div className="space-y-4">
+                            <div className="space-y-4">
+                              <div>
+                                <h4 className="font-semibold text-gray-900 dark:text-white mb-2 text-sm">Contact Information</h4>
+                                <div className="space-y-1 text-sm text-gray-600 dark:text-gray-400 bg-gray-50 dark:bg-gray-700/50 p-3 rounded-lg">
+                                  <p>{customerName}</p>
+                                  <p>{phoneNumber}</p>
+                                </div>
+                              </div>
+                              <div>
+                                <h4 className="font-semibold text-gray-900 dark:text-white mb-2 text-sm">Delivery Information</h4>
+                                <div className="space-y-1 text-sm text-gray-600 dark:text-gray-400 bg-gray-50 dark:bg-gray-700/50 p-3 rounded-lg">
+                                  <p>{recipientName}</p>
+                                  <p>{recipientPhone}</p>
+                                  <p className="line-clamp-2">{deliveryAddress}</p>
+                                </div>
+                              </div>
+                            </div>
+
+                            <Divider />
+
+                            <div>
+                              <h4 className="font-semibold text-gray-900 dark:text-white mb-3 text-sm">Items</h4>
+                              <div className="space-y-3 max-h-60 overflow-y-auto pr-2">
+                                {cartItems.map((item) => (
+                                  <div key={item.id} className="flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-700/50 rounded-lg">
+                                    <div className="flex-1 min-w-0">
+                                      <p className="font-medium text-gray-900 dark:text-white text-sm truncate">
+                                        {item.name}
+                                      </p>
+                                      <p className="text-xs text-gray-500 dark:text-gray-400">
+                                        {item.variant} × {item.quantity}
+                                      </p>
+                                    </div>
+                                    <p className="font-bold text-gray-900 dark:text-white text-sm ml-2">
+                                      KES {(item.price * item.quantity).toLocaleString()}
+                                    </p>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Payment Method */}
+                        <Card className="border border-gray-200 dark:border-gray-700">
+                          <CardBody className="p-4">
+                            <div className="flex items-center gap-3 mb-3">
+                              <div className="p-2 rounded-lg bg-green-100 dark:bg-green-900/30">
+                                <BanknotesIcon className="w-4 h-4 text-green-600 dark:text-green-400" />
+                              </div>
+                              <h3 className="font-bold text-gray-900 dark:text-white text-sm">Payment Method</h3>
+                            </div>
+                            <div className="flex items-center gap-3 p-3 bg-gradient-to-r from-green-50 to-emerald-50 dark:from-green-900/20 dark:to-emerald-900/20 rounded-lg border border-green-200 dark:border-green-800">
+                              <div className="rounded-lg bg-green-500 flex items-center justify-center w-8 h-8">
+                                <span className="text-white font-bold text-xs">M</span>
+                              </div>
+                              <div>
+                                <p className="font-semibold text-gray-900 dark:text-white text-sm">M-Pesa STK Push</p>
+                                <p className="text-gray-600 dark:text-gray-400 text-xs">Secure mobile payment</p>
+                              </div>
+                            </div>
+                          </CardBody>
+                        </Card>
+                      </motion.div>
+                    )}
                   </AnimatePresence>
 
                   {/* Status Message */}
@@ -1081,43 +1043,16 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
               {/* Mobile Footer - Fixed at bottom */}
               <ModalFooter className={`sticky bottom-0 border-t border-gray-200 dark:border-gray-700 bg-gradient-to-b from-white to-gray-50 dark:from-gray-900 dark:to-gray-800 p-4`}>
                 <div className="flex flex-col gap-3 w-full">
-                  {activeStep === 'contact' && (
+                  {activeStep === 'details' && (
                     <Button
                       color="primary"
-                      onPress={goToNextStep}
-                      isDisabled={!customerName || !phoneNumber}
+                      onPress={() => setActiveStep('review')}
+                      isDisabled={!isFormValid()}
                       size="lg"
                       className="w-full bg-gradient-to-r from-blue-600 to-cyan-600 text-white font-semibold py-3"
-                      endContent={<ChevronRightIcon className="w-5 h-5" />}
                     >
-                      Continue to Delivery
+                      Continue to Review
                     </Button>
-                  )}
-
-                  {activeStep === 'delivery' && (
-                    <>
-                      <div className="flex gap-2">
-                        <Button
-                          variant="light"
-                          onPress={goToPreviousStep}
-                          size="sm"
-                          className="flex-1 text-gray-700 dark:text-gray-300"
-                          startContent={<ChevronLeftIcon className="w-4 h-4" />}
-                        >
-                          Back
-                        </Button>
-                        <Button
-                          color="primary"
-                          onPress={goToNextStep}
-                          isDisabled={!recipientName || !recipientPhone || !deliveryAddress}
-                          size="sm"
-                          className="flex-1 bg-gradient-to-r from-blue-600 to-cyan-600 text-white font-semibold"
-                          endContent={<ChevronRightIcon className="w-4 h-4" />}
-                        >
-                          Continue
-                        </Button>
-                      </div>
-                    </>
                   )}
 
                   {activeStep === 'review' && (
@@ -1132,35 +1067,23 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
                       >
                         {loading ? "Processing..." : "Place Order & Pay"}
                       </Button>
-                      <div className="flex gap-2">
-                        <Button
-                          variant="light"
-                          onPress={goToPreviousStep}
-                          isDisabled={loading}
-                          size="sm"
-                          className="flex-1 text-gray-700 dark:text-gray-300"
-                          startContent={<ChevronLeftIcon className="w-4 h-4" />}
-                        >
-                          Back
-                        </Button>
-                        <Button
-                          variant="light"
-                          onPress={() => setActiveStep('contact')}
-                          isDisabled={loading}
-                          size="sm"
-                          className="flex-1 text-gray-700 dark:text-gray-300"
-                          startContent={<ArrowPathIcon className="w-4 h-4" />}
-                        >
-                          Edit All
-                        </Button>
-                      </div>
+                      <Button
+                        variant="light"
+                        onPress={() => setActiveStep('details')}
+                        isDisabled={loading}
+                        size="sm"
+                        className="w-full text-gray-700 dark:text-gray-300"
+                        startContent={<ArrowPathIcon className="w-4 h-4" />}
+                      >
+                        Edit Details
+                      </Button>
                     </>
                   )}
                 </div>
               </ModalFooter>
             </>
           ) : (
-            // Desktop/Tablet Layout (Original)
+            // Desktop/Tablet Layout (Original with improvements)
             <>
               <ModalHeader className="pt-6 pb-4 md:pt-8 md:pb-6 px-4 md:px-6">
                 <div className="flex items-center justify-between w-full">
@@ -1200,8 +1123,7 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
                     {/* Left Column - Order Details */}
                     <div className={`${isMobile ? '' : 'lg:col-span-2 space-y-6'}`}>
                       <AnimatePresence mode="wait">
-                        {/* For desktop, we combine contact and delivery in one step */}
-                        {activeStep === 'contact' && (
+                        {activeStep === 'details' && (
                           <motion.div
                             key="details"
                             initial={{ opacity: 0, x: -20 }}
@@ -1508,7 +1430,7 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
                     {activeStep === 'review' && !isMobile && (
                       <Button
                         variant="light"
-                        onPress={() => setActiveStep('contact')}
+                        onPress={() => setActiveStep('details')}
                         isDisabled={loading}
                         size={isMobile ? "sm" : "md"}
                         className="text-gray-700 dark:text-gray-300"
@@ -1520,7 +1442,7 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
                   </div>
 
                   <div className={`flex gap-2 md:gap-3 ${isMobile ? 'w-full mt-2' : ''}`}>
-                    {activeStep === 'contact' && !isMobile && (
+                    {activeStep === 'details' && (
                       <Button
                         color="primary"
                         variant="bordered"
@@ -1529,7 +1451,7 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
                         size={isMobile ? "sm" : "md"}
                         className={`border-blue-600 text-blue-600 dark:text-blue-400 ${isMobile ? 'flex-1 w-full text-sm' : ''}`}
                       >
-                        Review Order
+                        {isMobile ? 'Continue' : 'Review Order'}
                       </Button>
                     )}
 
@@ -1556,7 +1478,21 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
                   </div>
                 </div>
 
-                {/* Mobile step navigation - removed duplicate */}
+                {/* Mobile step navigation */}
+                {isMobile && activeStep === 'review' && (
+                  <div className="w-full mt-4">
+                    <Button
+                      variant="light"
+                      onPress={() => setActiveStep('details')}
+                      isDisabled={loading}
+                      size="sm"
+                      className="w-full text-gray-700 dark:text-gray-300 text-sm"
+                      startContent={<ArrowPathIcon className="w-4 h-4" />}
+                    >
+                      Edit Details
+                    </Button>
+                  </div>
+                )}
               </ModalFooter>
             </>
           )}
