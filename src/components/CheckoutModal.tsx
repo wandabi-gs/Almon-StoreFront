@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useCallback } from "react";
 import {
   Modal,
   ModalContent,
@@ -109,8 +109,6 @@ const formatPhoneForMpesa = (phone: string): string => {
   return cleaned;
 };
 
-
-
 // Simple Toast Component
 const Toast = ({ message, type, onClose }: { message: string; type: 'success' | 'error' | 'info'; onClose: () => void }) => {
   const bgColor = type === 'success' ? 'bg-emerald-500' : type === 'error' ? 'bg-red-500' : 'bg-blue-500';
@@ -173,8 +171,10 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
   const [isMobile, setIsMobile] = useState(false);
   const [isTablet, setIsTablet] = useState(false);
 
-  // Ref for scrollable content wrapper (not ModalBody)
+  // Refs
   const contentWrapperRef = useRef<HTMLDivElement>(null);
+  const modalBodyRef = useRef<HTMLDivElement>(null);
+  const activeInputRef = useRef<HTMLInputElement | null>(null);
 
   const subtotal = cartItems.reduce((sum, item) => sum + (item.price * item.quantity), 0);
   const vat = subtotal * 0.16;
@@ -198,43 +198,115 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
     };
   }, []);
 
-  // Add this useEffect for keyboard handling
+  // Keyboard handling for mobile
   useEffect(() => {
     if (!isMobile || !isOpen) return;
+
+    const handleFocusIn = (event: FocusEvent) => {
+      const target = event.target as HTMLElement;
+      if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA') {
+        activeInputRef.current = target as HTMLInputElement;
+
+        // Wait for next animation frame to ensure keyboard is shown
+        requestAnimationFrame(() => {
+          setTimeout(() => {
+            if (activeInputRef.current) {
+              // Use scrollIntoView with smooth behavior
+              activeInputRef.current.scrollIntoView({
+                behavior: 'smooth',
+                block: 'center',
+                inline: 'nearest'
+              });
+
+              // Additional margin for better visibility
+              const modalBody = modalBodyRef.current;
+              if (modalBody) {
+                const inputRect = activeInputRef.current.getBoundingClientRect();
+
+                // If input is near bottom of viewport, scroll more
+                if (inputRect.bottom > window.innerHeight * 0.7) {
+                  const scrollAmount = inputRect.bottom - window.innerHeight * 0.7;
+                  modalBody.scrollBy({
+                    top: scrollAmount + 50, // Add extra margin
+                    behavior: 'smooth'
+                  });
+                }
+              }
+            }
+          }, 100);
+        });
+      }
+    };
+
+    const handleFocusOut = () => {
+      activeInputRef.current = null;
+    };
 
     const handleResize = () => {
       if (document.activeElement?.tagName === 'INPUT' ||
         document.activeElement?.tagName === 'TEXTAREA') {
-        // Force scroll to input when keyboard is open
+        const activeElement = document.activeElement as HTMLElement;
+
         setTimeout(() => {
-          document.activeElement?.scrollIntoView({
+          activeElement.scrollIntoView({
             behavior: 'smooth',
             block: 'center',
             inline: 'nearest'
           });
-        }, 100);
+        }, 150);
       }
     };
 
+    window.addEventListener('focusin', handleFocusIn);
+    window.addEventListener('focusout', handleFocusOut);
     window.addEventListener('resize', handleResize);
 
     return () => {
+      window.removeEventListener('focusin', handleFocusIn);
+      window.removeEventListener('focusout', handleFocusOut);
       window.removeEventListener('resize', handleResize);
     };
   }, [isMobile, isOpen]);
 
+  // Scroll helper function
+  const scrollToInput = useCallback((inputElement: HTMLInputElement | null) => {
+    if (!inputElement || !modalBodyRef.current) return;
+
+    const modalBody = modalBodyRef.current;
+    const inputRect = inputElement.getBoundingClientRect();
+
+    // Calculate how much to scroll
+    const inputTopRelativeToModal = inputRect.top - modalBody.getBoundingClientRect().top;
+
+    // If input is above the visible area
+    if (inputTopRelativeToModal < 0) {
+      modalBody.scrollTo({
+        top: modalBody.scrollTop + inputTopRelativeToModal - 20,
+        behavior: 'smooth'
+      });
+    }
+    // If input is below the visible area (considering keyboard)
+    else if (inputTopRelativeToModal > window.innerHeight * 0.4) {
+      const scrollAmount = inputTopRelativeToModal - window.innerHeight * 0.4 + 100;
+      modalBody.scrollTo({
+        top: modalBody.scrollTop + scrollAmount,
+        behavior: 'smooth'
+      });
+    }
+  }, []);
+
   // Show toast function
-  const showToast = (message: string, type: 'success' | 'error' | 'info') => {
+  const showToast = useCallback((message: string, type: 'success' | 'error' | 'info') => {
     setToast({ message, type, show: true });
 
     // Auto-hide toast after 5 seconds
     setTimeout(() => {
       setToast(null);
     }, 5000);
-  };
+  }, []);
 
   // Reset form function
-  const resetForm = () => {
+  const resetForm = useCallback(() => {
     setCustomerName("");
     setPhoneNumber("");
     setRecipientName("");
@@ -243,15 +315,15 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
     setStatus(null);
     setSaleId(null);
     setActiveStep('details');
-  };
+  }, []);
 
   // Handle modal close with form reset
-  const handleModalClose = () => {
+  const handleModalClose = useCallback(() => {
     resetForm();
     onClose();
-  };
+  }, [resetForm, onClose]);
 
-  const formatOrderData = () => {
+  const formatOrderData = useCallback(() => {
     const products = cartItems.map((item) => {
       let productId = item.productId || item.id;
       if (productId && typeof productId === 'string') {
@@ -291,10 +363,10 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
       delivery_fee: deliveryFee,
       total_amount: grandTotal,
     };
-  };
+  }, [cartItems, productSaleType, storeId, recipientName, recipientPhone, deliveryAddress, deliveryArea, deliveryFee, phoneNumber, customerName, subtotal, vat, grandTotal]);
 
   // Check if order already exists with completed payment
-  const checkExistingOrder = async (id: string): Promise<{ exists: boolean; data?: any; hasCompletedPayment?: boolean }> => {
+  const checkExistingOrder = useCallback(async (id: string): Promise<{ exists: boolean; data?: any; hasCompletedPayment?: boolean }> => {
     try {
       const response = await axios.get(`${API_BASE_URL}/customer/orders/${id}`);
       const orderData = response.data;
@@ -316,7 +388,7 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
       }
       return { exists: false };
     }
-  };
+  }, []);
 
   const handleSubmit = async () => {
     setStatus(null);
@@ -713,6 +785,27 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
     </div>
   );
 
+  // Add scroll-to-top button for mobile
+  const renderScrollToTopButton = () => {
+    if (!isMobile || !isOpen) return null;
+
+    return (
+      <Button
+        isIconOnly
+        size="sm"
+        className="fixed bottom-20 right-4 z-[10001] bg-blue-600 text-white rounded-full shadow-lg"
+        onPress={() => {
+          modalBodyRef.current?.scrollTo({
+            top: 0,
+            behavior: 'smooth'
+          });
+        }}
+      >
+        <ChevronLeftIcon className="w-5 h-5 rotate-90" />
+      </Button>
+    );
+  };
+
   return (
     <>
       {/* Custom Toast Notification */}
@@ -724,12 +817,15 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
         />
       )}
 
+      {/* Scroll to top button for mobile */}
+      {renderScrollToTopButton()}
+
       {/* Main Checkout Modal */}
       <Modal
         isOpen={isOpen}
         onClose={handleModalClose}
         size={getModalSize()}
-        scrollBehavior="inside"
+        scrollBehavior="outside"
         placement={isMobile ? "bottom" : "auto"}
         classNames={{
           base: "z-[9999]",
@@ -757,25 +853,54 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
             },
           }
         }}
-
         shouldBlockScroll={false}
         closeButton={!isMobile}
+        hideCloseButton={isMobile}
+        disableAnimation={isMobile}
       >
         <ModalContent
           className={`bg-gradient-to-b from-white to-gray-50 dark:from-gray-900 dark:to-gray-800 border border-gray-200 dark:border-gray-700 shadow-3xl ${isMobile
-            ? 'max-h-[95vh] h-[90vh] touch-manipulation' // Add touch-manipulation
+            ? 'max-h-[95vh] h-[90vh] touch-manipulation'
             : 'h-auto'
             }`}
           style={isMobile ? {
             touchAction: 'manipulation',
-            WebkitOverflowScrolling: 'touch'
+            WebkitOverflowScrolling: 'touch',
+            overscrollBehavior: 'contain'
           } : {}}
+          onFocusCapture={(e) => {
+            if (isMobile && (e.target as HTMLElement).tagName === 'INPUT') {
+              setTimeout(() => {
+                (e.target as HTMLElement).scrollIntoView({
+                  behavior: 'smooth',
+                  block: 'center',
+                  inline: 'nearest'
+                });
+              }, 100);
+            }
+          }}
         >
           {isMobile ? (
             <>
               {renderMobileHeader()}
-              <ModalBody className={`overflow-y-auto flex-1 px-4 pb-4`}>
-                <div ref={contentWrapperRef} className="space-y-6">
+              <ModalBody
+                className={`overflow-y-auto flex-1 px-4 pb-4 touch-pan-y`}
+                onTouchStart={(e) => {
+                  // Prevent default touch behavior that might interfere
+                  if (e.target instanceof HTMLInputElement) {
+                    e.stopPropagation();
+                  }
+                }}
+              >
+                <div
+                  ref={modalBodyRef}
+                  className="space-y-6"
+                  style={{
+                    WebkitOverflowScrolling: 'touch',
+                    overscrollBehavior: 'contain',
+                    position: 'relative'
+                  }}
+                >
                   {renderStepIndicator()}
 
                   <AnimatePresence mode="wait">
@@ -804,6 +929,16 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
                               isRequired
                               disabled={loading}
                               size="sm"
+                              inputMode="text"
+                              enterKeyHint="next"
+                              onKeyDown={(e) => {
+                                if (e.key === 'Enter') {
+                                  // Focus next input
+                                  const nextInput = e.currentTarget.parentElement?.parentElement?.nextElementSibling?.querySelector('input');
+                                  if (nextInput) (nextInput as HTMLInputElement).focus();
+                                }
+                              }}
+                              onFocus={(e) => scrollToInput(e.target as HTMLInputElement)}
                               classNames={{
                                 input: "text-sm py-3",
                                 label: "text-sm text-gray-700 dark:text-gray-300"
@@ -816,6 +951,16 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
                               onChange={(e) => setPhoneNumber(e.target.value)}
                               isRequired
                               disabled={loading}
+                              inputMode="tel"
+                              enterKeyHint="next"
+                              onKeyDown={(e) => {
+                                if (e.key === 'Enter') {
+                                  // Focus next input
+                                  const nextInput = e.currentTarget.parentElement?.parentElement?.nextElementSibling?.querySelector('input');
+                                  if (nextInput) (nextInput as HTMLInputElement).focus();
+                                }
+                              }}
+                              onFocus={(e) => scrollToInput(e.target as HTMLInputElement)}
                               startContent={<PhoneIcon className="w-4 h-4 text-gray-400" />}
                               size="sm"
                               classNames={{
@@ -843,6 +988,16 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
                               isRequired
                               disabled={loading}
                               size="sm"
+                              inputMode="text"
+                              enterKeyHint="next"
+                              onKeyDown={(e) => {
+                                if (e.key === 'Enter') {
+                                  // Focus next input
+                                  const nextInput = e.currentTarget.parentElement?.parentElement?.nextElementSibling?.querySelector('input');
+                                  if (nextInput) (nextInput as HTMLInputElement).focus();
+                                }
+                              }}
+                              onFocus={(e) => scrollToInput(e.target as HTMLInputElement)}
                               classNames={{
                                 input: "text-sm py-3",
                                 label: "text-sm text-gray-700 dark:text-gray-300"
@@ -855,6 +1010,16 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
                               onChange={(e) => setRecipientPhone(e.target.value)}
                               isRequired
                               disabled={loading}
+                              inputMode="tel"
+                              enterKeyHint="next"
+                              onKeyDown={(e) => {
+                                if (e.key === 'Enter') {
+                                  // Focus next input
+                                  const nextInput = e.currentTarget.parentElement?.parentElement?.nextElementSibling?.querySelector('input');
+                                  if (nextInput) (nextInput as HTMLInputElement).focus();
+                                }
+                              }}
+                              onFocus={(e) => scrollToInput(e.target as HTMLInputElement)}
                               startContent={<PhoneIcon className="w-4 h-4 text-gray-400" />}
                               size="sm"
                               classNames={{
@@ -869,6 +1034,14 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
                               isRequired
                               disabled={loading}
                               size="sm"
+                              inputMode="text"
+                              enterKeyHint="done"
+                              onKeyDown={(e) => {
+                                if (e.key === 'Enter') {
+                                  e.currentTarget.blur();
+                                }
+                              }}
+                              onFocus={(e) => scrollToInput(e.target as HTMLInputElement)}
                               classNames={{
                                 input: "text-sm py-3",
                                 label: "text-sm text-gray-700 dark:text-gray-300"
@@ -1149,6 +1322,8 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
                                   isRequired
                                   disabled={loading}
                                   size={isMobile ? "sm" : "md"}
+                                  inputMode="text"
+                                  enterKeyHint="next"
                                   classNames={{
                                     input: isMobile ? "text-sm py-4" : "text-base py-6",
                                     label: "text-gray-700 dark:text-gray-300"
@@ -1163,6 +1338,8 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
                                   isRequired
                                   disabled={loading}
                                   description={!isMobile && "For M-Pesa payment confirmation"}
+                                  inputMode="tel"
+                                  enterKeyHint="next"
                                   startContent={<PhoneIcon className={`${isMobile ? 'w-4 h-4' : 'w-5 h-5'} text-gray-400`} />}
                                   size={isMobile ? "sm" : "md"}
                                 />
@@ -1187,6 +1364,8 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
                                   isRequired
                                   disabled={loading}
                                   size={isMobile ? "sm" : "md"}
+                                  inputMode="text"
+                                  enterKeyHint="next"
                                 />
                                 <Input
                                   type="tel"
@@ -1196,6 +1375,8 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
                                   onChange={(e) => setRecipientPhone(e.target.value)}
                                   isRequired
                                   disabled={loading}
+                                  inputMode="tel"
+                                  enterKeyHint="next"
                                   startContent={<PhoneIcon className={`${isMobile ? 'w-4 h-4' : 'w-5 h-5'} text-gray-400`} />}
                                   size={isMobile ? "sm" : "md"}
                                 />
@@ -1210,6 +1391,8 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
                                   isRequired
                                   disabled={loading}
                                   size={isMobile ? "sm" : "md"}
+                                  inputMode="text"
+                                  enterKeyHint="done"
                                   classNames={{
                                     input: isMobile ? "text-sm" : "text-base",
                                     label: "text-gray-700 dark:text-gray-300"
