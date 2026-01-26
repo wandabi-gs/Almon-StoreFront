@@ -782,43 +782,7 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
               </div>
             </div>
 
-            {/* Order Summary Preview */}
-            <Card className="border border-gray-200 dark:border-gray-700">
-              <CardBody className="p-4">
-                <h3 className="font-bold text-gray-900 dark:text-white mb-3">Order Summary</h3>
-                <div className="space-y-2">
-                  <div className="flex justify-between items-center">
-                    <span className="text-sm text-gray-600 dark:text-gray-400">Items</span>
-                    <span className="font-medium text-sm text-gray-900 dark:text-white">
-                      {cartItems.reduce((sum, item) => sum + item.quantity, 0)}
-                    </span>
-                  </div>
-                  <div className="flex justify-between items-center">
-                    <span className="text-sm text-gray-600 dark:text-gray-400">Subtotal</span>
-                    <span className="font-medium text-sm text-gray-900 dark:text-white">
-                      KES {subtotal.toLocaleString()}
-                    </span>
-                  </div>
-                  {deliveryFee > 0 && (
-                    <div className="flex justify-between items-center">
-                      <span className="text-sm text-gray-600 dark:text-gray-400">Delivery</span>
-                      <span className="font-medium text-sm text-emerald-600 dark:text-emerald-400">
-                        KES {deliveryFee.toLocaleString()}
-                      </span>
-                    </div>
-                  )}
-                  <Divider className="my-2" />
-                  <div className="flex justify-between items-center pt-1">
-                    <span className="font-bold text-gray-900 dark:text-white">Total</span>
-                    <div className="text-right">
-                      <div className="font-bold bg-gradient-to-r from-blue-600 to-cyan-600 bg-clip-text text-transparent text-lg">
-                        KES {grandTotal.toLocaleString()}
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </CardBody>
-            </Card>
+            {/* Removed Order Summary Preview from Step 1 */}
           </motion.div>
         );
 
@@ -969,8 +933,14 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
             {/* Final Summary */}
             <Card className="border border-gray-200 dark:border-gray-700">
               <CardBody className="p-4">
-                <h3 className="font-bold text-gray-900 dark:text-white mb-3">Final Summary</h3>
+                <h3 className="font-bold text-gray-900 dark:text-white mb-3">Order Summary</h3>
                 <div className="space-y-2">
+                  <div className="flex justify-between items-center">
+                    <span className="text-sm text-gray-600 dark:text-gray-400">Items</span>
+                    <span className="font-medium text-sm text-gray-900 dark:text-white">
+                      {cartItems.reduce((sum, item) => sum + item.quantity, 0)}
+                    </span>
+                  </div>
                   <div className="flex justify-between items-center">
                     <span className="text-sm text-gray-600 dark:text-gray-400">Subtotal</span>
                     <span className="font-medium text-sm text-gray-900 dark:text-white">
