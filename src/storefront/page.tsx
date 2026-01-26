@@ -828,7 +828,7 @@ export default function StorefrontPage() {
                   <div className="w-full h-full rounded-xl bg-white dark:bg-gray-900 flex items-center justify-center">
                     <div className="w-12 h-12 sm:w-14 sm:h-14 rounded-xl bg-brand-orange-500 flex items-center justify-center shadow-soft">
                       <img
-                        src="/src/assets/logo.jpg"
+                        src="/src/assets/logo.png"
                         alt="Almon Products Limited"
                         className="w-8 h-8 sm:w-9 sm:h-9 object-contain"
                       />
@@ -1403,7 +1403,7 @@ export default function StorefrontPage() {
               <div className="flex items-center space-x-3 mb-6">
                 <div className="w-12 h-12 sm:w-14 sm:h-14 rounded-xl bg-brand-orange-500 flex items-center justify-center shadow-soft">
                   <img
-                    src="/src/assets/logo.jpg"
+                    src="/src/assets/logo.png"
                     alt="Almon Products Limited"
                     className="w-8 h-8 sm:w-9 sm:h-9 object-contain"
                   />
