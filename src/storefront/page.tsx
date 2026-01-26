@@ -826,8 +826,12 @@ export default function StorefrontPage() {
               <div className="relative">
                 <div className="w-12 h-12 sm:w-16 sm:h-16 rounded-2xl bg-gradient-to-br from-blue-600 via-blue-500 to-cyan-500 p-0.5 shadow-2xl shadow-blue-500/30">
                   <div className="w-full h-full rounded-xl bg-white dark:bg-gray-900 flex items-center justify-center">
-                    <div className="text-xl sm:text-2xl font-bold bg-gradient-to-r from-blue-600 to-cyan-500 bg-clip-text text-transparent">
-                      AP
+                    <div className="w-12 h-12 sm:w-14 sm:h-14 rounded-xl bg-brand-orange-500 flex items-center justify-center shadow-soft">
+                      <img
+                        src="/src/assets/logo.jpg"
+                        alt="Almon Products Limited"
+                        className="w-8 h-8 sm:w-9 sm:h-9 object-contain"
+                      />
                     </div>
                   </div>
                 </div>
