@@ -469,7 +469,7 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
         // Show success toast
         showToast(
           `Order ${id} created successfully! Input PIN to complete order.`,
-          'info'
+          'success'
         );
 
         // Show success message in modal
@@ -499,7 +499,7 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
         // Show warning toast
         showToast(
           `Order ${id} created! Payment initiation failed. Please contact support.`,
-          'info'
+          'error'
         );
 
         // Show warning message in modal
