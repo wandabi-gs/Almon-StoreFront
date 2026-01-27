@@ -283,11 +283,21 @@ export function ConfirmDeliveryModal({ isOpen, onClose }: ConfirmDeliveryModalPr
 
       console.log("Calling API with payload:", payload);
 
-      const response = await axios.post(`${API_BASE}/Customer/confirmOrder`, payload);
+      // Use the correct endpoint
+      const endpoint = `${API_BASE}/customer/orders/confirm`;
+
+      console.log(`Using endpoint: ${endpoint}`);
+
+      const response = await axios.post(endpoint, payload, {
+        timeout: 10000,
+        headers: {
+          'Content-Type': 'application/json',
+        }
+      });
 
       console.log("API Response:", response.data);
 
-      if (response.data && (response.data.success || response.data.message)) {
+      if (response.data && (response.data.success || response.data.message || response.data.status === 'success')) {
         setOtpSent(true);
         setDeliveryCompleted(true);
 
@@ -306,8 +316,15 @@ export function ConfirmDeliveryModal({ isOpen, onClose }: ConfirmDeliveryModalPr
 
       if (err.response?.data?.message) {
         errorMessage = err.response.data.message;
+      } else if (err.response?.data?.error) {
+        errorMessage = err.response.data.error;
       } else if (err.message) {
         errorMessage = err.message;
+      }
+
+      // Check if it's a 404 error
+      if (err.response?.status === 404) {
+        errorMessage = "Delivery confirmation endpoint not found. Please contact support.";
       }
 
       setOtpError(errorMessage);
